@@ -24,7 +24,7 @@
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .shimmer-text {
     background: linear-gradient(
-      90deg,
+      45deg,
       #ffffff 0%,
       #ffffff 40%,
       #ff0000 44%,

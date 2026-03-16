@@ -29,8 +29,9 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      const res = await fetch('/api/tickers');
-      if (!res.ok) throw new Error('Failed to fetch from local API');
+      const baseUrl = window.location.origin;
+      const res = await fetch(`${baseUrl}/api/tickers`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       
       if (data.retCode === 0 && data.result && data.result.list) {
@@ -45,11 +46,8 @@ export const useBybitTickers = () => {
         setError(data.retMsg || 'Failed to fetch data from Bybit');
       }
     } catch (err) {
-      console.warn('Failed to fetch from API, using mock data:', err);
-      // Fallback to mock data if API fails
-      setTickers(MOCK_TICKERS);
-      setLastUpdated(new Date());
-      setError(null); // Clear error since we have fallback data
+      console.error('Failed to fetch tickers:', err);
+      setError('Connection error. Please check your internet or refresh.');
     } finally {
       setLoading(false);
     }

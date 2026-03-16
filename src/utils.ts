@@ -38,15 +38,22 @@ export const getSignalType = (ticker: any) => {
   const high24h = Number(ticker.highPrice24h);
   const low24h = Number(ticker.lowPrice24h);
   const rangePcnt = ((high24h - low24h) / low24h) * 100;
-  const toRes = ((high24h - Number(ticker.lastPrice)) / Number(ticker.lastPrice)) * 100;
-  const toSup = ((Number(ticker.lastPrice) - low24h) / Number(ticker.lastPrice)) * 100;
+  const funding = Number(ticker.fundingRate) * 100;
 
-  if (change24h < -4 && change1h > 0.8) return 'LONG_REV';
-  if (change24h > 4 && change1h < -0.8) return 'SHORT_REV';
-  if (change24h > 2.5 && change1h > 1.0) return 'LONG_TREND';
-  if (change24h < -2.5 && change1h < -1.0) return 'SHORT_TREND';
+  // Reversal (Razvorot) Signals
+  if (change24h < -5 && change1h > 1.0) return 'LONG_REV';
+  if (change24h > 5 && change1h < -1.0) return 'SHORT_REV';
+
+  // Trend Signals
+  if (change24h > 3 && change1h > 1.5) return 'LONG_TREND';
+  if (change24h < -3 && change1h < -1.5) return 'SHORT_TREND';
+
+  // Consolidation
   if (rangePcnt > 0 && rangePcnt < 3.5) return 'CONS';
-  if (toRes < 1.5) return 'NEAR_RES';
-  if (toSup < 1.5) return 'NEAR_SUP';
+
+  // Overheated
+  if (funding > 0.1) return 'OVERHEATED_LONG';
+  if (funding < -0.1) return 'OVERHEATED_SHORT';
+  
   return 'NONE';
 };

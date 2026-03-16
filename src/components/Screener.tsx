@@ -240,39 +240,26 @@ export const Screener: React.FC = () => {
   };
 
   const getQuickSignal = (ticker: BybitTicker) => {
-    const change1h = calc1hChange(ticker.lastPrice, ticker.prevPrice1h);
-    const change24h = Number(ticker.price24hPcnt) * 100;
-    const funding = Number(ticker.fundingRate) * 100;
-    const high24h = Number(ticker.highPrice24h);
-    const low24h = Number(ticker.lowPrice24h);
-    const rangePcnt = ((high24h - low24h) / low24h) * 100;
+    const signalType = getSignalType(ticker);
     
-    // Reversal (Razvorot) Signals
-    if (change24h < -5 && change1h > 1.0) {
-      return <span className="text-emerald-400 flex items-center gap-1 font-bold"><TrendingUp className="w-3 h-3"/> {t('LONG Reversal')}</span>;
+    switch (signalType) {
+      case 'LONG_REV':
+        return <span className="text-emerald-400 flex items-center gap-1 font-bold"><TrendingUp className="w-3 h-3"/> {t('LONG Reversal')}</span>;
+      case 'SHORT_REV':
+        return <span className="text-rose-400 flex items-center gap-1 font-bold"><TrendingDown className="w-3 h-3"/> {t('SHORT Reversal')}</span>;
+      case 'LONG_TREND':
+        return <span className="text-emerald-400 flex items-center gap-1 font-bold"><ArrowUp className="w-3 h-3"/> {t('LONG Trend')}</span>;
+      case 'SHORT_TREND':
+        return <span className="text-rose-400 flex items-center gap-1 font-bold"><ArrowDown className="w-3 h-3"/> {t('SHORT Trend')}</span>;
+      case 'CONS':
+        return <span className="text-blue-400 flex items-center gap-1 font-bold"><Activity className="w-3 h-3"/> {t('Consolidation')}</span>;
+      case 'OVERHEATED_LONG':
+        return <span className="text-amber-400 text-xs">{t('Overheated Longs')}</span>;
+      case 'OVERHEATED_SHORT':
+        return <span className="text-amber-400 text-xs">{t('Overheated Shorts')}</span>;
+      default:
+        return <span className="text-slate-600">-</span>;
     }
-    if (change24h > 5 && change1h < -1.0) {
-      return <span className="text-rose-400 flex items-center gap-1 font-bold"><TrendingDown className="w-3 h-3"/> {t('SHORT Reversal')}</span>;
-    }
-
-    // Trend Signals
-    if (change24h > 3 && change1h > 1.5) {
-      return <span className="text-emerald-400 flex items-center gap-1 font-bold"><ArrowUp className="w-3 h-3"/> {t('LONG Trend')}</span>;
-    }
-    if (change24h < -3 && change1h < -1.5) {
-      return <span className="text-rose-400 flex items-center gap-1 font-bold"><ArrowDown className="w-3 h-3"/> {t('SHORT Trend')}</span>;
-    }
-
-    // Consolidation
-    if (rangePcnt > 0 && rangePcnt < 3.5) {
-      return <span className="text-blue-400 flex items-center gap-1 font-bold"><Activity className="w-3 h-3"/> {t('Consolidation')}</span>;
-    }
-
-    // Overheated
-    if (funding > 0.1) return <span className="text-amber-400 text-xs">{t('Overheated Longs')}</span>;
-    if (funding < -0.1) return <span className="text-amber-400 text-xs">{t('Overheated Shorts')}</span>;
-    
-    return <span className="text-slate-600">-</span>;
   };
 
   const timeframes = [
@@ -307,19 +294,11 @@ export const Screener: React.FC = () => {
         <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-4 sm:px-6 py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-4">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c]">
                 <img 
-                  src="/logo.png" 
-                  alt="Logo" 
-                  className="w-full h-full object-cover" 
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).parentElement?.classList.add('bg-blue-500/20');
-                    const icon = document.createElement('div');
-                    icon.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>';
-                    (e.target as HTMLImageElement).parentElement?.appendChild(icon.firstChild as Node);
-                  }}
+                  src="logo.png" 
+                  alt="Profit Hunter Logo" 
+                  className="w-full h-full object-cover"
                 />
               </div>
               <div>
