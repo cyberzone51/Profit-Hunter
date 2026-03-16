@@ -2,29 +2,6 @@ import { useState, useEffect } from 'react';
 import { Kline, TradingSignal, BybitTicker } from '../types';
 import { generateSignal } from '../utils/ta';
 
-const generateMockKlines = (currentPrice: number = 100) => {
-  const klines: Kline[] = [];
-  let price = currentPrice;
-  const now = Date.now();
-  for (let i = 100; i >= 0; i--) {
-    const open = price;
-    const close = price * (1 + (Math.random() * 0.02 - 0.01));
-    const high = Math.max(open, close) * (1 + Math.random() * 0.01);
-    const low = Math.min(open, close) * (1 - Math.random() * 0.01);
-    const volume = Math.random() * 1000000;
-    klines.push({
-      startTime: now - i * 15 * 60 * 1000,
-      open,
-      high,
-      low,
-      close,
-      volume
-    });
-    price = close;
-  }
-  return klines;
-};
-
 export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null = null) => {
   const [signal, setSignal] = useState<TradingSignal | null>(null);
   const [klines, setKlines] = useState<Kline[]>([]);
@@ -42,7 +19,8 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       setError(null);
       try {
         // Fetch advanced klines for MTFA
-        const res = await fetch(`/api/advanced-klines?symbol=${symbol}`);
+        const baseUrl = window.location.origin;
+        const res = await fetch(`${baseUrl}/api/advanced-klines?symbol=${symbol}`);
         if (!res.ok) throw new Error('Failed to fetch from local API');
         const data = await res.json();
 
@@ -69,16 +47,9 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
           throw new Error('Failed to fetch advanced klines from API');
         }
       } catch (err) {
-        console.warn('Network error analyzing coin, using mock data:', err);
-        // Fallback to mock data
-        const mockK15m = generateMockKlines(ticker ? Number(ticker.lastPrice) : 100);
-        const mockK1h = generateMockKlines(ticker ? Number(ticker.lastPrice) : 100);
-        const mockK4h = generateMockKlines(ticker ? Number(ticker.lastPrice) : 100);
-        const mockBtc1h = generateMockKlines(65000);
-        const generatedSignal = generateSignal(symbol, mockK15m, mockK1h, mockK4h, mockBtc1h, ticker);
-        setKlines(mockK15m);
-        setSignal(generatedSignal);
-        setError(null); // Clear error since we have fallback data
+        console.error('Error analyzing coin:', err);
+        setError('Signal analysis failed. Please check connection.');
+        setSignal(null);
       } finally {
         setLoading(false);
       }
