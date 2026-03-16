@@ -307,7 +307,21 @@ export const Screener: React.FC = () => {
         <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-4 sm:px-6 py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-4">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Logo" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 object-cover" referrerPolicy="no-referrer" />
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center">
+                <img 
+                  src="/logo.png" 
+                  alt="Logo" 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).parentElement?.classList.add('bg-blue-500/20');
+                    const icon = document.createElement('div');
+                    icon.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>';
+                    (e.target as HTMLImageElement).parentElement?.appendChild(icon.firstChild as Node);
+                  }}
+                />
+              </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative">
                   Profit Hunter
