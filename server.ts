@@ -36,17 +36,28 @@ async function startServer() {
   };
 
   // API routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", lastInstrumentsFetch });
+  });
+
   app.get("/api/tickers", async (req, res) => {
     try {
+      console.log('Fetching tickers from Bybit...');
       const [tickersResponse, instruments] = await Promise.all([
-        fetch('https://api.bybit.com/v5/market/tickers?category=linear'),
+        fetch('https://api.bybit.com/v5/market/tickers?category=linear').catch(e => {
+          console.error('Tickers fetch failed:', e);
+          throw e;
+        }),
         getInstruments()
       ]);
       
       if (!tickersResponse.ok) {
+        const errorText = await tickersResponse.text();
+        console.error(`Bybit API error: ${tickersResponse.status} ${errorText}`);
         throw new Error(`HTTP error! status: ${tickersResponse.status}`);
       }
       const data = await tickersResponse.json();
+      console.log(`Successfully fetched ${data.result?.list?.length || 0} tickers`);
       
       // Inject launchTime into tickers
       if (data.result && data.result.list) {
@@ -58,8 +69,8 @@ async function startServer() {
       
       res.json(data);
     } catch (error) {
-      console.error('Error fetching tickers:', error);
-      res.status(500).json({ error: 'Failed to fetch tickers' });
+      console.error('Error in /api/tickers:', error);
+      res.status(500).json({ error: 'Failed to fetch tickers', details: error instanceof Error ? error.message : String(error) });
     }
   });
 
