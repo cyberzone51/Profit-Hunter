@@ -73,9 +73,5 @@ export interface TradingSignal {
   timestamp: Date;
 }
 
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
+export {};
 

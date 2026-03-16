@@ -5,7 +5,7 @@ import { useCoinSignal } from '../hooks/useCoinSignal';
 import { SignalPanel } from './SignalPanel';
 import { BybitTicker, SortField, SortDirection } from '../types';
 import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType } from '../utils';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, Wallet, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe } from 'lucide-react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { ProAnalysisModal } from './ProAnalysisModal';
 
@@ -71,11 +71,6 @@ export const Screener: React.FC = () => {
   const [analyzingSymbol, setAnalyzingSymbol] = useState<BybitTicker | null>(null);
   const prevSignalsRef = useRef<Record<string, string>>({});
   
-  // Wallet state
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [walletError, setWalletError] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-
   const selectedTicker = useMemo(() => tickers.find(t => t.symbol === selectedSymbol) || null, [tickers, selectedSymbol]);
   const { signal, klines, loading: signalLoading } = useCoinSignal(selectedSymbol, selectedTicker);
 
@@ -84,14 +79,6 @@ export const Screener: React.FC = () => {
   useEffect(() => {
     tickersRef.current = tickers;
   }, [tickers]);
-
-  // Clear wallet error after 3 seconds
-  useEffect(() => {
-    if (walletError) {
-      const timer = setTimeout(() => setWalletError(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [walletError]);
 
   const playAlertSound = () => {
     if (!soundEnabled) return;
@@ -140,33 +127,6 @@ export const Screener: React.FC = () => {
     
     prevSignalsRef.current = newSignals;
   }, [tickers, soundEnabled]);
-
-  const connectWallet = async () => {
-    setIsConnecting(true);
-    setWalletError(null);
-    
-    try {
-      if (typeof (window as any).ethereum !== 'undefined') {
-        const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
-        if (accounts && accounts.length > 0) {
-          setWalletAddress(accounts[0]);
-        } else {
-          setWalletError('No accounts found');
-        }
-      } else {
-        setWalletError('MetaMask is not installed');
-      }
-    } catch (err: any) {
-      console.error('Wallet connection error:', err);
-      setWalletError(err.message || 'Failed to connect to MetaMask');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const formatAddress = (address: string) => {
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -347,11 +307,14 @@ export const Screener: React.FC = () => {
         <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-4 sm:px-6 py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-4">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <Activity className="w-5 h-5 text-blue-400" />
-              </div>
+              <img src="/logo.png" alt="Logo" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 object-cover" referrerPolicy="no-referrer" />
               <div>
-                <h1 className="text-base sm:text-lg font-semibold tracking-tight text-white">{t('Pro Crypto Screener')}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative">
+                  Profit Hunter
+                </h1>
+                <div className="text-[9px] sm:text-[10px] text-blue-400 font-bold uppercase tracking-[0.3em] mb-1.5 opacity-80">
+                  Pro Crypto Screener
+                </div>
                 <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
@@ -392,26 +355,6 @@ export const Screener: React.FC = () => {
                     ))}
                   </select>
                 </div>
-              </div>
-
-              <div className="relative">
-                <button
-                  onClick={connectWallet}
-                  disabled={isConnecting}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    walletAddress 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  <Wallet className="w-4 h-4" />
-                  <span>{walletAddress ? '...' : t('Wallet')}</span>
-                </button>
-                {walletError && (
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs p-2 rounded shadow-lg z-50">
-                    {walletError}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -493,28 +436,6 @@ export const Screener: React.FC = () => {
                     ))}
                   </select>
                 </div>
-              </div>
-              
-              <div className="hidden lg:block relative">
-                <button
-                  onClick={connectWallet}
-                  disabled={isConnecting}
-                  className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
-                    walletAddress 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  <Wallet className="w-4 h-4" />
-                  <span className="hidden xs:inline">{isConnecting ? t('Connecting...') : walletAddress ? formatAddress(walletAddress) : t('Connect Wallet')}</span>
-                  <span className="xs:hidden">{walletAddress ? '...' : 'Wallet'}</span>
-                </button>
-                
-                {walletError && (
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs p-2 rounded shadow-lg z-50">
-                    {walletError}
-                  </div>
-                )}
               </div>
             </div>
           </div>
