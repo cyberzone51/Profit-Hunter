@@ -9,9 +9,14 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      const baseUrl = window.location.origin;
-      const res = await fetch(`${baseUrl}/api/tickers`);
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const targetUrl = `${apiUrl}/api/tickers`;
+      
+      const res = await fetch(targetUrl);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.details || `HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       
       if (data.retCode === 0 && data.result && data.result.list) {

@@ -1,10 +1,14 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import cors from "cors";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  app.use(cors());
+  app.use(express.json());
 
   // Cache for instruments info to get launchTime
   let instrumentsCache: Record<string, string> = {};
@@ -36,15 +40,21 @@ async function startServer() {
   };
 
   // API routes
+  app.get("/api/version", (req, res) => {
+    // In production, we might read from a version file
+    // In dev, we just return a timestamp
+    res.json({ version: process.env.APP_VERSION || 'dev-' + Date.now() });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", lastInstrumentsFetch });
   });
 
   app.get("/api/tickers", async (req, res) => {
     try {
-      console.log('Fetching tickers from Bybit...');
+      console.log(`[${new Date().toISOString()}] Fetching tickers from Bybit...`);
       const [tickersResponse, instruments] = await Promise.all([
-        fetch('https://api.bybit.com/v5/market/tickers?category=linear').catch(e => {
+        fetch('https://api.bybit.com/v5/market/tickers?category=linear', { signal: AbortSignal.timeout(10000) }).catch(e => {
           console.error('Tickers fetch failed:', e);
           throw e;
         }),

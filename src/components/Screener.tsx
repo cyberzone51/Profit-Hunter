@@ -8,7 +8,6 @@ import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType }
 import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe } from 'lucide-react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { ProAnalysisModal } from './ProAnalysisModal';
-import logo from '../assets/logo.png';
 
 const LazyChart = React.memo(({ symbol, timeframe }: { symbol: string; timeframe: string }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -287,6 +286,28 @@ export const Screener: React.FC = () => {
     { code: 'es', label: 'ES' },
   ];
 
+  // Version sync check
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(`${apiUrl}/api/version`);
+        if (res.ok) {
+          const data = await res.json();
+          // In production, we compare versions
+          // For now, we just log it
+          console.log(`Client version: ${__APP_VERSION__}, Server version: ${data.version}`);
+        }
+      } catch (err) {
+        console.error('Version check failed:', err);
+      }
+    };
+    
+    checkVersion();
+    const interval = setInterval(checkVersion, 300000); // Check every 5 mins
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="flex h-screen bg-[#0b0e14] text-slate-200 font-sans overflow-hidden relative">
       {/* Main Content */}
@@ -297,7 +318,7 @@ export const Screener: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c]">
                 <img 
-                  src={logo} 
+                  src="/logo.png" 
                   alt="Profit Hunter Logo" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
@@ -314,6 +335,11 @@ export const Screener: React.FC = () => {
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {lastUpdated.toLocaleTimeString()}
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <div className={`w-1.5 h-1.5 rounded-full ${error ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    {error ? 'Offline' : 'Online'}
                   </span>
                   <span>•</span>
                   <span>{tickers.length} Pairs</span>

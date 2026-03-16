@@ -19,9 +19,14 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       setError(null);
       try {
         // Fetch advanced klines for MTFA
-        const baseUrl = window.location.origin;
-        const res = await fetch(`${baseUrl}/api/advanced-klines?symbol=${symbol}`);
-        if (!res.ok) throw new Error('Failed to fetch from local API');
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const targetUrl = `${apiUrl}/api/advanced-klines?symbol=${symbol}`;
+        
+        const res = await fetch(targetUrl);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.details || `HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
 
         if (data.k15m && data.k1h && data.k4h && data.btc1h) {
