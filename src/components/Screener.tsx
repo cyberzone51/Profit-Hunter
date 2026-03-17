@@ -286,8 +286,21 @@ export const Screener: React.FC = () => {
     { code: 'es', label: 'ES' },
   ];
 
-  // Version sync check
   useEffect(() => {
+    const pingServer = async () => {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
+        await fetch(`${baseUrl}/api/health`).catch(() => {});
+      } catch (e) {}
+    };
+    pingServer();
+    
+    console.log('App Environment:', {
+      VITE_API_URL: import.meta.env.VITE_API_URL,
+      NODE_ENV: import.meta.env.MODE,
+      origin: window.location.origin
+    });
+    
     const checkVersion = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -503,8 +516,20 @@ export const Screener: React.FC = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : error && tickers.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-rose-400">
-              {error}
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className="text-rose-500 mb-4 bg-rose-500/10 p-4 rounded-xl border border-rose-500/20">
+                <p className="text-lg font-medium mb-2">{t('Connection error. Please check your internet or refresh.')}</p>
+                <p className="text-xs opacity-60 font-mono">
+                  Error: {error}<br/>
+                  Attempted URL: {import.meta.env.VITE_API_URL || window.location.origin + '/api/tickers'}
+                </p>
+              </div>
+              <button 
+                onClick={() => window.location.reload()}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+              >
+                {t('Refresh Application')}
+              </button>
             </div>
           ) : filteredAndSortedTickers.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">

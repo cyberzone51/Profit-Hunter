@@ -7,7 +7,24 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
+  // 1. EXTREMELY PERMISSIVE CORS (Must be first!)
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    next();
+  });
+
+  // 2. REQUEST LOGGING
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
+
   app.use(express.json());
 
   // Cache for instruments info to get launchTime
@@ -26,7 +43,6 @@ async function startServer() {
             const newCache: Record<string, string> = {};
             data.result.list.forEach((item: any) => {
               newCache[item.symbol] = item.launchTime;
-              console.log(`Symbol: ${item.symbol}, LaunchTime: ${item.launchTime}`);
             });
             instrumentsCache = newCache;
             lastInstrumentsFetch = now;
@@ -39,15 +55,13 @@ async function startServer() {
     return instrumentsCache;
   };
 
-  // API routes
+  // 3. API ROUTES (Must be before static/vite)
   app.get("/api/version", (req, res) => {
-    // In production, we might read from a version file
-    // In dev, we just return a timestamp
-    res.json({ version: process.env.APP_VERSION || 'dev-' + Date.now() });
+    res.json({ version: process.env.APP_VERSION || '1.0.0-' + Date.now() });
   });
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", lastInstrumentsFetch });
+    res.json({ status: "ok", time: new Date().toISOString() });
   });
 
   app.get("/api/tickers", async (req, res) => {

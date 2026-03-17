@@ -9,10 +9,22 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const targetUrl = `${apiUrl}/api/tickers`;
+      let envApiUrl = import.meta.env.VITE_API_URL;
       
-      const res = await fetch(targetUrl);
+      // Fallback for Vercel if environment variable is missing
+      if (!envApiUrl && window.location.hostname.includes('vercel.app')) {
+        envApiUrl = 'https://ais-pre-4utfza4jbx2dlatcr62r64-157497256116.europe-west2.run.app';
+      }
+      
+      const baseUrl = envApiUrl ? envApiUrl.replace(/\/$/, '') : '';
+      const targetUrl = `${baseUrl}/api/tickers`;
+      
+      console.log(`[Tickers] Fetching from: ${targetUrl || 'relative /api/tickers'}`);
+      
+      const res = await fetch(targetUrl).catch(err => {
+        console.error(`[Tickers] Fetch failed for ${targetUrl}:`, err);
+        throw new Error(`Network error: ${err.message}. Check CORS or URL.`);
+      });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.details || `HTTP error! status: ${res.status}`);
