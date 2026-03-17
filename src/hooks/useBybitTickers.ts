@@ -9,17 +9,9 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      let envApiUrl = import.meta.env.VITE_API_URL;
+      const targetUrl = `/api/market-data`;
       
-      // Fallback for Vercel if environment variable is missing
-      if (!envApiUrl && window.location.hostname.includes('vercel.app')) {
-        envApiUrl = 'https://ais-pre-4utfza4jbx2dlatcr62r64-157497256116.europe-west2.run.app';
-      }
-      
-      const baseUrl = envApiUrl ? envApiUrl.replace(/\/$/, '') : '';
-      const targetUrl = `${baseUrl}/api/tickers`;
-      
-      console.log(`[Tickers] Fetching from: ${targetUrl || 'relative /api/tickers'}`);
+      console.log(`[Tickers] Fetching from: ${targetUrl}`);
       
       const res = await fetch(targetUrl).catch(err => {
         console.error(`[Tickers] Fetch failed for ${targetUrl}:`, err);

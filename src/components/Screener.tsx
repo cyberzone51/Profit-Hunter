@@ -289,8 +289,7 @@ export const Screener: React.FC = () => {
   useEffect(() => {
     const pingServer = async () => {
       try {
-        const baseUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
-        await fetch(`${baseUrl}/api/health`).catch(() => {});
+        await fetch(`/api/health`).catch(() => {});
       } catch (e) {}
     };
     pingServer();
@@ -303,8 +302,7 @@ export const Screener: React.FC = () => {
     
     const checkVersion = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-        const res = await fetch(`${apiUrl}/api/version`);
+        const res = await fetch(`/api/version`);
         if (res.ok) {
           const data = await res.json();
           // In production, we compare versions
@@ -521,7 +519,7 @@ export const Screener: React.FC = () => {
                 <p className="text-lg font-medium mb-2">{t('Connection error. Please check your internet or refresh.')}</p>
                 <p className="text-xs opacity-60 font-mono">
                   Error: {error}<br/>
-                  Attempted URL: {import.meta.env.VITE_API_URL || window.location.origin + '/api/tickers'}
+                  Attempted URL: /api/market-data
                 </p>
               </div>
               <button 

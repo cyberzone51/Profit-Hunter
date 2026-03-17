@@ -3,25 +3,26 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 
+console.log("[SERVER] Starting initialization...");
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // 1. EXTREMELY PERMISSIVE CORS (Must be first!)
+  // 1. GLOBAL LOGGING & CORS (Must be first)
   app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] Incoming: ${req.method} ${req.url} from ${req.get('origin') || 'no-origin'}`);
+    
+    // Manual CORS headers to be 100% sure
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
+    res.header('Access-Control-Allow-Credentials', 'true');
+
     if (req.method === 'OPTIONS') {
+      console.log(`[${new Date().toISOString()}] Handled OPTIONS preflight`);
       return res.status(200).end();
     }
-    next();
-  });
-
-  // 2. REQUEST LOGGING
-  app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
   });
 
@@ -55,16 +56,22 @@ async function startServer() {
     return instrumentsCache;
   };
 
-  // 3. API ROUTES (Must be before static/vite)
+  // 2. API ROUTES
   app.get("/api/version", (req, res) => {
     res.json({ version: process.env.APP_VERSION || '1.0.0-' + Date.now() });
   });
 
+  app.get("/api/ping", (req, res) => {
+    console.log("[API] Ping received");
+    res.send("pong");
+  });
+
   app.get("/api/health", (req, res) => {
+    console.log("[API] Health check");
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  app.get("/api/tickers", async (req, res) => {
+  app.get("/api/market-data", async (req, res) => {
     try {
       console.log(`[${new Date().toISOString()}] Fetching tickers from Bybit...`);
       const [tickersResponse, instruments] = await Promise.all([
@@ -93,7 +100,7 @@ async function startServer() {
       
       res.json(data);
     } catch (error) {
-      console.error('Error in /api/tickers:', error);
+      console.error('Error in /api/market-data:', error);
       res.status(500).json({ error: 'Failed to fetch tickers', details: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -157,6 +164,11 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  app.use((req, res) => {
+    console.log(`[404] ${req.method} ${req.url}`);
+    res.status(404).send(`Page not found: ${req.url}`);
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

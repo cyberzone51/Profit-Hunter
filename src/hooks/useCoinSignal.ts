@@ -19,9 +19,7 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       setError(null);
       try {
         // Fetch advanced klines for MTFA
-        const envApiUrl = import.meta.env.VITE_API_URL;
-        const baseUrl = envApiUrl ? envApiUrl.replace(/\/$/, '') : '';
-        const targetUrl = `${baseUrl}/api/advanced-klines?symbol=${symbol}`;
+        const targetUrl = `/api/advanced-klines?symbol=${symbol}`;
         
         console.log(`[Signals] Fetching from: ${targetUrl}`);
         
