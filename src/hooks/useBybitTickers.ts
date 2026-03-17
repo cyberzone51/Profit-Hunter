@@ -9,7 +9,11 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      const targetUrl = `/api/market-data`;
+      let baseUrl = import.meta.env.VITE_API_URL || '';
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.slice(0, -1);
+      }
+      const targetUrl = `${baseUrl}/api/market-data`;
       
       console.log(`[Tickers] Fetching from: ${targetUrl}`);
       

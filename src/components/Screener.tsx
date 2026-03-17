@@ -287,9 +287,13 @@ export const Screener: React.FC = () => {
   ];
 
   useEffect(() => {
+    let baseUrl = import.meta.env.VITE_API_URL || '';
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
     const pingServer = async () => {
       try {
-        await fetch(`/api/health`).catch(() => {});
+        await fetch(`${baseUrl}/api/health`).catch(() => {});
       } catch (e) {}
     };
     pingServer();
@@ -302,7 +306,7 @@ export const Screener: React.FC = () => {
     
     const checkVersion = async () => {
       try {
-        const res = await fetch(`/api/version`);
+        const res = await fetch(`${baseUrl}/api/version`);
         if (res.ok) {
           const data = await res.json();
           // In production, we compare versions
@@ -320,7 +324,7 @@ export const Screener: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-screen bg-[#0b0e14] text-slate-200 font-sans overflow-hidden relative">
+    <div className="flex h-[100dvh] w-full bg-[#0b0e14] text-slate-200 font-sans overflow-hidden relative">
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Header */}
@@ -519,7 +523,8 @@ export const Screener: React.FC = () => {
                 <p className="text-lg font-medium mb-2">{t('Connection error. Please check your internet or refresh.')}</p>
                 <p className="text-xs opacity-60 font-mono">
                   Error: {error}<br/>
-                  Attempted URL: /api/market-data
+                  Attempted URL: {(import.meta.env.VITE_API_URL || '') + '/api/market-data'}<br/>
+                  Origin: {window.location.origin}
                 </p>
               </div>
               <button 

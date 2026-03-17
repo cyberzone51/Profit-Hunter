@@ -17,19 +17,9 @@ async function startServer() {
   console.log(`[SERVER] NODE_ENV: ${process.env.NODE_ENV}`);
 
   // 1. GLOBAL LOGGING & CORS (Must be first)
+  app.use(cors({ origin: true, credentials: true }));
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] Incoming: ${req.method} ${req.url} from ${req.get('origin') || 'no-origin'}`);
-    
-    // Manual CORS headers to be 100% sure
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-      console.log(`[${new Date().toISOString()}] Handled OPTIONS preflight`);
-      return res.status(200).end();
-    }
     next();
   });
 
