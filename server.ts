@@ -2,12 +2,19 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log("[SERVER] Starting initialization...");
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  console.log(`[SERVER] NODE_ENV: ${process.env.NODE_ENV}`);
 
   // 1. GLOBAL LOGGING & CORS (Must be first)
   app.use((req, res, next) => {
@@ -57,6 +64,14 @@ async function startServer() {
   };
 
   // 2. API ROUTES
+  app.get("/api/env", (req, res) => {
+    res.json({
+      NODE_ENV: process.env.NODE_ENV,
+      cwd: process.cwd(),
+      distExists: fs.existsSync(path.join(process.cwd(), 'dist'))
+    });
+  });
+
   app.get("/api/version", (req, res) => {
     res.json({ version: process.env.APP_VERSION || '1.0.0-' + Date.now() });
   });
@@ -152,22 +167,69 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    console.log("[SERVER] Starting Vite in development mode...");
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("[SERVER] Vite middleware attached");
+
+      // In development, serve index.html for all non-API routes
+      app.get('*', async (req, res, next) => {
+        if (req.url.startsWith('/api')) return next();
+        
+        const url = req.originalUrl;
+        try {
+          let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        } catch (e) {
+          console.error("[SERVER] Vite HTML transform error:", e);
+          next(e);
+        }
+      });
+    } catch (e) {
+      console.error("[SERVER] Failed to start Vite:", e);
+    }
   } else {
+    console.log("[SERVER] Starting in production mode...");
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    } else {
+      console.error("[SERVER] Production build (dist/) not found! Falling back to root index.html");
+      app.use(express.static(process.cwd()));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(process.cwd(), 'index.html'));
+      });
+    }
   }
 
+  // Only handle 404s if they haven't been handled by Vite or the static handlers
+  app.use((req, res, next) => {
+    console.log(`[DEBUG] Unhandled request: ${req.method} ${req.url}`);
+    if (req.url.startsWith('/api')) {
+      return res.status(404).json({ 
+        error: "API route not found",
+        path: req.url,
+        method: req.method
+      });
+    }
+    // For non-API routes in dev mode, if Vite didn't handle it, we might need a fallback
+    if (process.env.NODE_ENV !== "production" && req.method === 'GET' && !req.url.includes('.')) {
+      console.log(`[DEBUG] Potential SPA route missed by Vite: ${req.url}`);
+    }
+    next();
+  });
+
+  // Final catch-all for anything that reached here
   app.use((req, res) => {
-    console.log(`[404] ${req.method} ${req.url}`);
-    res.status(404).send(`Page not found: ${req.url}`);
+    res.status(404).send(`[Profit Hunter Server] 404 - Not Found: ${req.url}`);
   });
 
   app.listen(PORT, "0.0.0.0", () => {
@@ -175,4 +237,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("[SERVER] Fatal error during startup:", err);
+  process.exit(1);
+});
