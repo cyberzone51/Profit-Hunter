@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Kline, TradingSignal, BybitTicker } from '../types';
 import { generateSignal } from '../utils/ta';
+import { API_URL } from '../config';
 
 export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null = null) => {
   const [signal, setSignal] = useState<TradingSignal | null>(null);
@@ -19,7 +20,7 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       setError(null);
       try {
         // Fetch advanced klines for MTFA
-        let baseUrl = import.meta.env.VITE_API_URL || '';
+        let baseUrl = API_URL;
         if (baseUrl.endsWith('/')) {
           baseUrl = baseUrl.slice(0, -1);
         }

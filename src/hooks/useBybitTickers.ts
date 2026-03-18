@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BybitTicker } from '../types';
 
+import { API_URL } from '../config';
+
 export const useBybitTickers = () => {
   const [tickers, setTickers] = useState<BybitTicker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -9,7 +11,7 @@ export const useBybitTickers = () => {
 
   const fetchTickers = useCallback(async () => {
     try {
-      let baseUrl = import.meta.env.VITE_API_URL || '';
+      let baseUrl = API_URL;
       if (baseUrl.endsWith('/')) {
         baseUrl = baseUrl.slice(0, -1);
       }

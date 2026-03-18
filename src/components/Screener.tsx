@@ -8,6 +8,7 @@ import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType }
 import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe } from 'lucide-react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { ProAnalysisModal } from './ProAnalysisModal';
+import { API_URL } from '../config';
 
 const LazyChart = React.memo(({ symbol, timeframe }: { symbol: string; timeframe: string }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -287,7 +288,7 @@ export const Screener: React.FC = () => {
   ];
 
   useEffect(() => {
-    let baseUrl = import.meta.env.VITE_API_URL || '';
+    let baseUrl = API_URL;
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
     }
@@ -299,7 +300,7 @@ export const Screener: React.FC = () => {
     pingServer();
     
     console.log('App Environment:', {
-      VITE_API_URL: import.meta.env.VITE_API_URL,
+      VITE_API_URL: API_URL,
       NODE_ENV: import.meta.env.MODE,
       origin: window.location.origin
     });
@@ -523,7 +524,7 @@ export const Screener: React.FC = () => {
                 <p className="text-lg font-medium mb-2">{t('Connection error. Please check your internet or refresh.')}</p>
                 <p className="text-xs opacity-60 font-mono">
                   Error: {error}<br/>
-                  Attempted URL: {(import.meta.env.VITE_API_URL || '') + '/api/market-data'}<br/>
+                  Attempted URL: {API_URL + '/api/market-data'}<br/>
                   Origin: {window.location.origin}
                 </p>
               </div>
