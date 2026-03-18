@@ -33,6 +33,12 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.details || `HTTP error! status: ${res.status}`);
         }
+        
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          throw new Error(`Expected JSON but received HTML. API route may be missing or misconfigured.`);
+        }
+        
         const data = await res.json();
 
         if (data.k15m && data.k1h && data.k4h && data.btc1h) {

@@ -76,7 +76,7 @@ async function startServer() {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  app.get("/api/market-data", async (req, res) => {
+  app.get("/api/tickers", async (req, res) => {
     try {
       console.log(`[${new Date().toISOString()}] Fetching tickers from Bybit...`);
       const [tickersResponse, instruments] = await Promise.all([

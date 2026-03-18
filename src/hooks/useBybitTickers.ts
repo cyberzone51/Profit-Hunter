@@ -15,7 +15,7 @@ export const useBybitTickers = () => {
       if (baseUrl.endsWith('/')) {
         baseUrl = baseUrl.slice(0, -1);
       }
-      const targetUrl = `${baseUrl}/api/market-data`;
+      const targetUrl = `${baseUrl}/api/tickers`;
       
       console.log(`[Tickers] Fetching from: ${targetUrl}`);
       
@@ -27,6 +27,12 @@ export const useBybitTickers = () => {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.details || `HTTP error! status: ${res.status}`);
       }
+      
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        throw new Error(`Expected JSON but received HTML. API route may be missing or misconfigured.`);
+      }
+      
       const data = await res.json();
       
       if (data.retCode === 0 && data.result && data.result.list) {

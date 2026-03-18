@@ -524,7 +524,7 @@ export const Screener: React.FC = () => {
                 <p className="text-lg font-medium mb-2">{t('Connection error. Please check your internet or refresh.')}</p>
                 <p className="text-xs opacity-60 font-mono">
                   Error: {error}<br/>
-                  Attempted URL: {API_URL + '/api/market-data'}<br/>
+                  Attempted URL: {API_URL + '/api/tickers'}<br/>
                   Origin: {window.location.origin}
                 </p>
               </div>
