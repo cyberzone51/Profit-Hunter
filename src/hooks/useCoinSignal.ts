@@ -63,9 +63,9 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
         } else {
           throw new Error('Failed to fetch advanced klines from API');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error analyzing coin:', err);
-        setError('Signal analysis failed. Please check connection.');
+        setError(err.message || 'Signal analysis failed. Please check connection.');
         setSignal(null);
       } finally {
         setLoading(false);

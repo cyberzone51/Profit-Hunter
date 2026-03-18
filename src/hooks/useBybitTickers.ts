@@ -46,9 +46,9 @@ export const useBybitTickers = () => {
       } else {
         setError(data.retMsg || 'Failed to fetch data from Bybit');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch tickers:', err);
-      setError('Connection error. Please check your internet or refresh.');
+      setError(err.message || 'Connection error. Please check your internet or refresh.');
     } finally {
       setLoading(false);
     }
