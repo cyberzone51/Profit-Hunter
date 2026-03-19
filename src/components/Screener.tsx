@@ -332,8 +332,13 @@ export const Screener: React.FC = () => {
         <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-4 sm:px-6 py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-4">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center">
-                <CircleDollarSign className="w-12 h-12 sm:w-16 sm:h-16 text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" />
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center p-2">
+                <img 
+                  src="https://cdn-icons-png.flaticon.com/512/2489/2489756.png" 
+                  alt="Profit Hunter Logo" 
+                  className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]"
+                  referrerPolicy="no-referrer"
+                />
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative">
