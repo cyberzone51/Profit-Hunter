@@ -5,7 +5,7 @@ import { useCoinSignal } from '../hooks/useCoinSignal';
 import { SignalPanel } from './SignalPanel';
 import { BybitTicker, SortField, SortDirection } from '../types';
 import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType } from '../utils';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe, CircleDollarSign } from 'lucide-react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { ProAnalysisModal } from './ProAnalysisModal';
 import { API_URL } from '../config';
@@ -333,12 +333,7 @@ export const Screener: React.FC = () => {
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center">
-                <img 
-                  src="https://cdn-icons-png.flaticon.com/512/2489/2489756.png?v=2" 
-                  alt="Profit Hunter Logo" 
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
-                  referrerPolicy="no-referrer"
-                />
+                <CircleDollarSign className="w-12 h-12 sm:w-16 sm:h-16 text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" />
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative">
