@@ -336,7 +336,7 @@ export const Screener: React.FC = () => {
                 <img 
                   src="https://cdn-icons-png.flaticon.com/512/2489/2489756.png" 
                   alt="Profit Hunter Logo" 
-                  className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]"
+                  className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]"
                   referrerPolicy="no-referrer"
                 />
               </div>
