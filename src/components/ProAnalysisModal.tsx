@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Activity, TrendingUp, TrendingDown, Target, Shield, AlertTriangle, Zap, BarChart2, Waves, ActivitySquare, ArrowUpRight, ArrowDownRight, Layers } from 'lucide-react';
+import { X, Activity, TrendingUp, TrendingDown, Target, Shield, AlertTriangle, Zap, BarChart2, Waves, ActivitySquare, ArrowUpRight, ArrowDownRight, Layers, Lock, Wallet, CheckCircle2 } from 'lucide-react';
 import { BybitTicker } from '../types';
 import { useCoinSignal } from '../hooks/useCoinSignal';
 import { formatPrice as utilsFormatPrice } from '../utils';
+import { useWeb3Modal } from '@web3modal/wagmi/react';
+import { useAccount, useDisconnect } from 'wagmi';
 
 interface ProAnalysisModalProps {
   ticker: BybitTicker;
@@ -13,9 +15,33 @@ interface ProAnalysisModalProps {
 export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onClose }) => {
   const { t } = useTranslation();
   const { signal, loading } = useCoinSignal(ticker.symbol, ticker);
+  const { open } = useWeb3Modal();
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+
+  const [isPro, setIsPro] = useState(() => {
+    try {
+      return localStorage.getItem('profit_hunter_pro_status') === 'active';
+    } catch (e) {
+      return false;
+    }
+  });
+  const [isPaying, setIsPaying] = useState(false);
 
   const formatPrice = (price: number) => {
     return utilsFormatPrice(price);
+  };
+
+  const handlePayment = async () => {
+    setIsPaying(true);
+    // Simulate blockchain transaction delay
+    setTimeout(() => {
+      try {
+        localStorage.setItem('profit_hunter_pro_status', 'active');
+      } catch (e) {}
+      setIsPro(true);
+      setIsPaying(false);
+    }, 2000);
   };
 
   return (
@@ -47,8 +73,73 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 no-scrollbar">
-          {loading ? (
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 no-scrollbar relative">
+          {!isPro ? (
+            <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center max-w-md mx-auto">
+              <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mb-6 relative">
+                <Lock className="w-10 h-10 text-blue-400" />
+                <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg">
+                  PRO
+                </div>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-3">{t('Unlock Pro Analysis')}</h3>
+              <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+                {t('Get exclusive access to institutional-grade AI signals, exact entry points, take-profit targets, and advanced risk management metrics.')}
+              </p>
+
+              <div className="w-full space-y-4 bg-[#1a202c] p-6 rounded-xl border border-white/5 mb-8 text-left">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span className="text-sm text-slate-300">{t('Real-time AI trend predictions')}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span className="text-sm text-slate-300">{t('Exact Entry, TP, and SL levels')}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span className="text-sm text-slate-300">{t('Smart Money & Order Book analysis')}</span>
+                </div>
+              </div>
+
+              {!isConnected ? (
+                <button
+                  onClick={() => open()}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                >
+                  <Wallet className="w-5 h-5" />
+                  {t('Connect Wallet to Unlock')}
+                </button>
+              ) : (
+                <div className="w-full space-y-4">
+                  <div className="flex items-center justify-between bg-[#0b0e14] p-3 rounded-lg border border-white/5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {address?.slice(0, 6)}...{address?.slice(-4)}
+                      </span>
+                    </div>
+                    <button onClick={() => disconnect()} className="text-xs text-rose-400 hover:text-rose-300">
+                      {t('Disconnect')}
+                    </button>
+                  </div>
+                  <button
+                    onClick={handlePayment}
+                    disabled={isPaying}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-600/50 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                  >
+                    {isPaying ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Zap className="w-5 h-5" />
+                    )}
+                    {isPaying ? t('Processing Transaction...') : t('Pay 10 USDT for 30 Days')}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : loading ? (
             <div className="flex flex-col items-center justify-center py-12 sm:py-20">
               <div className="relative w-16 h-16 sm:w-24 sm:h-24 mb-6 sm:mb-8">
                 <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
@@ -303,7 +394,23 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
               </div>
 
             </div>
-          ) : null}
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 sm:py-20">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mb-4 sm:mb-6 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400">
+                <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-white mb-2 text-center">{t('Analysis Unavailable')}</h3>
+              <p className="text-slate-400 text-xs sm:text-sm mb-6 text-center max-w-md px-4">
+                {t('Not enough data to generate a reliable signal for')} {ticker.symbol}. {t('Please try again later or select another pair.')}
+              </p>
+              <button 
+                onClick={onClose}
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors text-sm"
+              >
+                {t('Go Back')}
+              </button>
+            </div>
+          )}
         </div>
         
         {/* Footer */}

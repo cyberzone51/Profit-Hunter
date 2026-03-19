@@ -15,8 +15,8 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       return;
     }
 
-    const fetchKlinesAndAnalyze = async () => {
-      setLoading(true);
+    const fetchKlinesAndAnalyze = async (isInitial = false) => {
+      if (isInitial) setLoading(true);
       setError(null);
       try {
         // Fetch advanced klines for MTFA
@@ -66,16 +66,16 @@ export const useCoinSignal = (symbol: string | null, ticker: BybitTicker | null 
       } catch (err: any) {
         console.error('Error analyzing coin:', err);
         setError(err.message || 'Signal analysis failed. Please check connection.');
-        setSignal(null);
+        if (isInitial) setSignal(null);
       } finally {
-        setLoading(false);
+        if (isInitial) setLoading(false);
       }
     };
 
-    fetchKlinesAndAnalyze();
+    fetchKlinesAndAnalyze(true);
     
     // Refresh signal every 15 seconds while panel is open
-    const interval = setInterval(fetchKlinesAndAnalyze, 15000);
+    const interval = setInterval(() => fetchKlinesAndAnalyze(false), 15000);
     return () => clearInterval(interval);
   }, [symbol, ticker]);
 

@@ -5,9 +5,10 @@ import { useCoinSignal } from '../hooks/useCoinSignal';
 import { SignalPanel } from './SignalPanel';
 import { BybitTicker, SortField, SortDirection } from '../types';
 import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType } from '../utils';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe, CircleDollarSign } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Bell, BellOff, Target, Shield, Sparkles, X, Globe, CircleDollarSign, Send, Twitter } from 'lucide-react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { ProAnalysisModal } from './ProAnalysisModal';
+import { TermsModal } from './TermsModal';
 import { API_URL } from '../config';
 
 const LazyChart = React.memo(({ symbol, timeframe }: { symbol: string; timeframe: string }) => {
@@ -70,7 +71,32 @@ export const Screener: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'signals' | 'near_levels' | 'consolidation' | 'new_listings'>('all');
   const [analyzingSymbol, setAnalyzingSymbol] = useState<BybitTicker | null>(null);
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(true); // Default to true to prevent flash, then check in effect
+  const [showTerms, setShowTerms] = useState(false);
   const prevSignalsRef = useRef<Record<string, string>>({});
+  
+  useEffect(() => {
+    try {
+      const accepted = localStorage.getItem('profit_hunter_terms_accepted') === 'true';
+      if (!accepted) {
+        setHasAcceptedTerms(false);
+        setShowTerms(true);
+      }
+    } catch (e) {
+      setHasAcceptedTerms(false);
+      setShowTerms(true);
+    }
+  }, []);
+
+  const handleAcceptTerms = () => {
+    try {
+      localStorage.setItem('profit_hunter_terms_accepted', 'true');
+    } catch (e) {
+      console.warn('Could not save to localStorage', e);
+    }
+    setHasAcceptedTerms(true);
+    setShowTerms(false);
+  };
   
   const selectedTicker = useMemo(() => tickers.find(t => t.symbol === selectedSymbol) || null, [tickers, selectedSymbol]);
   const { signal, klines, loading: signalLoading } = useCoinSignal(selectedSymbol, selectedTicker);
@@ -342,18 +368,18 @@ export const Screener: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between">
-                  <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative truncate">
+                  <h1 className="text-base min-[380px]:text-lg sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative whitespace-nowrap">
                     Profit Hunter
                   </h1>
                   {/* Mobile Top Right Controls */}
                   <div className="flex lg:hidden items-center gap-2 shrink-0 ml-2">
                     <div className="flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
                       <div className="relative flex items-center">
-                        <Globe className="w-3.5 h-3.5 text-slate-500 ml-2" />
+                        <Globe className="w-3.5 h-3.5 text-slate-500 ml-1.5" />
                         <select
                           value={i18n.language}
                           onChange={(e) => i18n.changeLanguage(e.target.value)}
-                          className="bg-transparent text-slate-300 text-[10px] font-medium py-1 pl-1.5 pr-5 appearance-none focus:outline-none cursor-pointer"
+                          className="bg-transparent text-slate-300 text-[10px] font-medium py-1 pl-1 pr-2 appearance-none focus:outline-none cursor-pointer"
                         >
                           {languages.map((lang) => (
                             <option key={lang.code} value={lang.code} className="bg-[#1a202c]">
@@ -756,6 +782,39 @@ export const Screener: React.FC = () => {
           </div>
           )}
         </div>
+
+        {/* Footer */}
+        <footer className="flex items-center justify-between px-4 py-3 bg-[#11151e] border-t border-white/5 shrink-0 text-xs text-slate-500">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowTerms(true)} 
+              className="hover:text-slate-300 transition-colors"
+            >
+              {t('Terms of Use')}
+            </button>
+            <span>© {new Date().getFullYear()} Profit Hunter</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <a 
+              href="https://t.me/your_telegram_channel" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hover:text-blue-400 transition-colors"
+              title="Telegram"
+            >
+              <Send className="w-4 h-4" />
+            </a>
+            <a 
+              href="https://twitter.com/your_twitter_handle" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hover:text-blue-400 transition-colors"
+              title="Twitter / X"
+            >
+              <Twitter className="w-4 h-4" />
+            </a>
+          </div>
+        </footer>
       </div>
 
       {/* Side Panel for Signals */}
@@ -777,6 +836,13 @@ export const Screener: React.FC = () => {
           onClose={() => setAnalyzingSymbol(null)} 
         />
       )}
+
+      {/* Terms of Use Modal */}
+      <TermsModal 
+        isOpen={showTerms} 
+        onClose={!hasAcceptedTerms ? handleAcceptTerms : () => setShowTerms(false)} 
+        isMandatory={!hasAcceptedTerms}
+      />
     </div>
   );
 };

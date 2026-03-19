@@ -72,78 +72,87 @@ export const generateSignal = (
   let bearScore = 0;
 
   // Apply MTFA & BTC Filters (Heavy weights)
-  if (mtfaTrend === 'BULLISH') bullScore += 15;
-  if (mtfaTrend === 'BEARISH') bearScore += 15;
-  if (btcTrend === 'BULLISH') bullScore += 10;
-  if (btcTrend === 'BEARISH') bearScore += 10;
+  if (mtfaTrend === 'BULLISH') bullScore += 20;
+  if (mtfaTrend === 'BEARISH') bearScore += 20;
+  if (btcTrend === 'BULLISH') bullScore += 15;
+  if (btcTrend === 'BEARISH') bearScore += 15;
+
+  // Volume Spike Detection
+  const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const currentVolume = volumes[volumes.length - 1];
+  const volumeSpike = currentVolume > avgVolume * 2.5;
 
   // Step 3: Adaptive Logic (Market Regime)
   if (adx > 25) {
     // Trending Market: Focus on EMA, MACD, ignore RSI extremes
-    if (ema20 > ema50 && ema50 > ema200) bullScore += 15;
-    if (ema20 < ema50 && ema50 < ema200) bearScore += 15;
+    if (ema20 > ema50 && ema50 > ema200) bullScore += 20;
+    if (ema20 < ema50 && ema50 < ema200) bearScore += 20;
     
-    if (macd.line > macd.signal) bullScore += 10;
-    if (macd.line < macd.signal) bearScore += 10;
+    if (macd.line > macd.signal && macd.hist > 0) bullScore += 15;
+    if (macd.line < macd.signal && macd.hist < 0) bearScore += 15;
     
-    if (currentPrice > vwap) bullScore += 5;
-    if (currentPrice < vwap) bearScore += 5;
+    if (currentPrice > vwap) bullScore += 10;
+    if (currentPrice < vwap) bearScore += 10;
   } else {
     // Ranging Market: Focus on RSI, Bollinger Bands
-    if (rsi < 30) bullScore += 15; // Oversold bounce
-    if (rsi > 70) bearScore += 15; // Overbought reject
+    if (rsi < 35) bullScore += 20; // Oversold bounce
+    if (rsi > 65) bearScore += 20; // Overbought reject
     
-    if (currentPrice < bb.lower) bullScore += 15;
-    if (currentPrice > bb.upper) bearScore += 15;
+    if (currentPrice < bb.lower) bullScore += 20;
+    if (currentPrice > bb.upper) bearScore += 20;
     
-    if (macd.hist > 0 && macd.hist > histogram[histogram.length - 2]) bullScore += 5;
-    if (macd.hist < 0 && macd.hist < histogram[histogram.length - 2]) bearScore += 5;
+    if (macd.hist > 0 && macd.hist > histogram[histogram.length - 2]) bullScore += 10;
+    if (macd.hist < 0 && macd.hist < histogram[histogram.length - 2]) bearScore += 10;
   }
 
   // Volume & Divergence
-  if (obv > prevObv) bullScore += 5;
-  if (obv < prevObv) bearScore += 5;
+  if (obv > prevObv && volumeSpike) bullScore += 15;
+  if (obv < prevObv && volumeSpike) bearScore += 15;
 
-  if (divergence === 'BULLISH') bullScore += 20;
-  if (divergence === 'BEARISH') bearScore += 20;
+  if (divergence === 'BULLISH') bullScore += 25;
+  if (divergence === 'BEARISH') bearScore += 25;
 
   // Crypto Metrics (Funding & OI)
   if (ticker) {
     const funding = Number(ticker.fundingRate);
-    if (funding < -0.0005) bullScore += 5;
-    if (funding > 0.0005) bearScore += 5;
+    if (funding < -0.0005) bullScore += 10;
+    if (funding > 0.0005) bearScore += 10;
   }
-
-  const finalScore = Math.max(bullScore, bearScore);
-  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = bullScore > bearScore ? 'LONG' : 'SHORT';
-
-  // Align direction with screener signal if available
-  if (ticker) {
-    const screenerSignal = getSignalType(ticker);
-    if (screenerSignal.includes('LONG')) {
-      direction = 'LONG';
-    } else if (screenerSignal.includes('SHORT')) {
-      direction = 'SHORT';
-    }
-  }
-
-  // Strict Filter: Reduce score instead of returning null so users can still see the analysis
-  let adjustedScore = direction === 'LONG' ? bullScore : bearScore;
-  if (direction === 'LONG' && btcTrend === 'BEARISH') adjustedScore = Math.max(0, adjustedScore - 20);
-  if (direction === 'SHORT' && btcTrend === 'BULLISH') adjustedScore = Math.max(0, adjustedScore - 20);
 
   // Boost score if it aligns with screener
   if (ticker) {
     const screenerSignal = getSignalType(ticker);
-    if ((direction === 'LONG' && screenerSignal.includes('LONG')) || 
-        (direction === 'SHORT' && screenerSignal.includes('SHORT'))) {
-      adjustedScore = Math.min(100, adjustedScore + 15);
-    }
+    if (screenerSignal.includes('LONG')) bullScore += 20;
+    if (screenerSignal.includes('SHORT')) bearScore += 20;
+  }
+
+  // Determine Direction
+  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  let finalScore = 0;
+
+  if (bullScore > bearScore && bullScore >= 65) {
+    direction = 'LONG';
+    finalScore = Math.min(99, bullScore);
+  } else if (bearScore > bullScore && bearScore >= 65) {
+    direction = 'SHORT';
+    finalScore = Math.min(99, bearScore);
+  } else {
+    direction = 'NEUTRAL';
+    finalScore = Math.max(bullScore, bearScore); // Just show the highest score for neutral
+  }
+
+  // Strict Filter: Reduce score if against BTC trend
+  if (direction === 'LONG' && btcTrend === 'BEARISH') finalScore = Math.max(0, finalScore - 25);
+  if (direction === 'SHORT' && btcTrend === 'BULLISH') finalScore = Math.max(0, finalScore - 25);
+
+  // If score drops below 55 after penalty, revert to NEUTRAL
+  if (finalScore < 55) {
+    direction = 'NEUTRAL';
   }
 
   // Always return a signal if we have enough data, even if the score is low, 
   // so the user can see the technical analysis breakdown.
-  if (adjustedScore >= 0) {
+  if (finalScore >= 0) {
     // Step 4: Smart SL/TP
     const { swingHigh, swingLow } = findSwingHighLow(highs, lows, 20);
     
@@ -157,19 +166,19 @@ export const generateSignal = (
       const risk = currentPrice - sl;
       tp1 = currentPrice + (risk * 1.5);
       tp2 = currentPrice + (risk * 3.0);
-    } else {
+    } else if (direction === 'SHORT') {
       sl = Math.max(swingHigh * 1.002, currentPrice + atr * 1.5); // Just above swing high or ATR
       const risk = sl - currentPrice;
       tp1 = currentPrice - (risk * 1.5);
       tp2 = currentPrice - (risk * 3.0);
+    } else {
+      // Neutral fallback SL/TP
+      sl = currentPrice - atr * 1.5;
+      tp1 = currentPrice + atr * 1.5;
+      tp2 = currentPrice + atr * 3.0;
     }
 
     const riskReward = (Math.abs(tp1 - currentPrice) / Math.abs(currentPrice - sl)).toFixed(2);
-
-    // Volume Spike Detection
-    const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-    const currentVolume = volumes[volumes.length - 1];
-    const volumeSpike = currentVolume > avgVolume * 2.5;
 
     // Elliott Wave Heuristic
     let elliottWave = 'Wave 4 (Consolidation)';
@@ -184,7 +193,7 @@ export const generateSignal = (
       symbol,
       direction,
       type: adx > 25 ? 'Trend Continuation' : 'Trend Reversal',
-      score: Math.round(adjustedScore),
+      score: Math.round(finalScore),
       entryPrice: currentPrice,
       takeProfit1: tp1,
       takeProfit2: tp2,
