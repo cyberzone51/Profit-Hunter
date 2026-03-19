@@ -331,8 +331,8 @@ export const Screener: React.FC = () => {
         {/* Header */}
         <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-4 sm:px-6 py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-4">
           <div className="flex items-center justify-between w-full lg:w-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center p-2">
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-full border-2 border-white/10 shadow-2xl shadow-blue-500/30 overflow-hidden bg-[#1a202c] flex items-center justify-center p-2">
                 <img 
                   src="https://cdn-icons-png.flaticon.com/512/2489/2489756.png" 
                   alt="Profit Hunter Logo" 
@@ -340,10 +340,31 @@ export const Screener: React.FC = () => {
                   referrerPolicy="no-referrer"
                 />
               </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative">
-                  Profit Hunter
-                </h1>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between">
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-[0.05em] leading-none mb-1 font-display uppercase italic shimmer-text relative truncate">
+                    Profit Hunter
+                  </h1>
+                  {/* Mobile Top Right Controls */}
+                  <div className="flex lg:hidden items-center gap-2 shrink-0 ml-2">
+                    <div className="flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
+                      <div className="relative flex items-center">
+                        <Globe className="w-3.5 h-3.5 text-slate-500 ml-2" />
+                        <select
+                          value={i18n.language}
+                          onChange={(e) => i18n.changeLanguage(e.target.value)}
+                          className="bg-transparent text-slate-300 text-[10px] font-medium py-1 pl-1.5 pr-5 appearance-none focus:outline-none cursor-pointer"
+                        >
+                          {languages.map((lang) => (
+                            <option key={lang.code} value={lang.code} className="bg-[#1a202c]">
+                              {lang.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="text-[9px] sm:text-[10px] text-blue-400 font-bold uppercase tracking-[0.3em] mb-1.5 opacity-80">
                   Pro Crypto Screener
                 </div>
@@ -373,26 +394,6 @@ export const Screener: React.FC = () => {
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 pr-4 py-1.5 bg-[#1a202c] border border-white/10 rounded-md text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all w-64 placeholder:text-slate-600"
               />
-            </div>
-
-            {/* Mobile Top Right Controls */}
-            <div className="flex lg:hidden items-center gap-2">
-              <div className="flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
-                <div className="relative flex items-center">
-                  <Globe className="w-3.5 h-3.5 text-slate-500 ml-2" />
-                  <select
-                    value={i18n.language}
-                    onChange={(e) => i18n.changeLanguage(e.target.value)}
-                    className="bg-transparent text-slate-300 text-[10px] font-medium py-1 pl-1.5 pr-5 appearance-none focus:outline-none cursor-pointer"
-                  >
-                    {languages.map((lang) => (
-                      <option key={lang.code} value={lang.code} className="bg-[#1a202c]">
-                        {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             </div>
           </div>
 
