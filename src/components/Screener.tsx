@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTickers } from '../hooks/useTickers';
 import { useCoinSignal } from '../hooks/useCoinSignal';
-import { SignalPanel } from './SignalPanel';
 import { BybitTicker, SortField, SortDirection, Exchange } from '../types';
 import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType, getTradeSetup } from '../utils';
 import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Target, Shield, Sparkles, X, Globe, CircleDollarSign, Send, Twitter, BrainCircuit, ChevronDown } from 'lucide-react';
@@ -10,7 +9,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGr
 const EXCHANGE_TIERS: Record<string, { label: string; exchanges: Exchange[] }> = {
   'Tier 1': {
     label: '🔴 Tier 1',
-    exchanges: ['Binance', 'Coinbase', 'Kraken', 'OKX']
+    exchanges: ['Binance', 'Kraken', 'OKX']
   },
   'Tier 2': {
     label: '🟡 Tier 2',
@@ -21,10 +20,41 @@ const EXCHANGE_TIERS: Record<string, { label: string; exchanges: Exchange[] }> =
     exchanges: ['KuCoin', 'MEXC', 'Gate.io']
   }
 };
-import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
-import { ProAnalysisModal } from './ProAnalysisModal';
 import { TermsModal } from './TermsModal';
 import { API_URL } from '../config';
+
+const TradingViewChart = React.lazy(() =>
+  import('react-ts-tradingview-widgets').then((module) => ({ default: module.AdvancedRealTimeChart }))
+);
+const SignalPanel = React.lazy(() =>
+  import('./SignalPanel').then((module) => ({ default: module.SignalPanel }))
+);
+const ProAnalysisModal = React.lazy(() =>
+  import('./ProAnalysisModal').then((module) => ({ default: module.ProAnalysisModal }))
+);
+const PremiumSignalsModal = React.lazy(() =>
+  import('./PremiumSignalsModal').then((module) => ({ default: module.PremiumSignalsModal }))
+);
+
+type SignalStats = {
+  wins: number;
+  losses: number;
+};
+
+type TrackedSignal = {
+  type: string;
+  tp: number;
+  sl: number;
+  entry: number;
+  status: 'active' | 'won' | 'lost';
+};
+
+const SIGNAL_FILTER_TYPES = ['LONG_REV', 'SHORT_REV', 'LONG_TREND', 'SHORT_TREND'];
+const FREE_SIGNALS_LIMIT = 10;
+const PREMIUM_SIGNALS_STORAGE_KEY = 'profit_hunter_signals_premium';
+
+const getTickerMarketKey = (ticker: Pick<BybitTicker, 'symbol' | 'exchange'>) =>
+  `${ticker.exchange || 'Bybit'}:${ticker.symbol}`;
 
 const EXCHANGE_DOMAINS: Record<Exchange, string> = {
   'Binance': 'binance.com',
@@ -35,7 +65,6 @@ const EXCHANGE_DOMAINS: Record<Exchange, string> = {
   'Gate.io': 'gate.io',
   'Bitget': 'bitget.com',
   'Kraken': 'kraken.com',
-  'Coinbase': 'coinbase.com',
   'Deribit': 'deribit.com'
 };
 
@@ -50,7 +79,17 @@ const ExchangeIcon = ({ exchange, className = "w-4 h-4" }: { exchange: Exchange;
   );
 };
 
-const SignalAccuracyBar = ({ stats, winRate, t }: { stats: any, winRate: number, t: any }) => (
+const SignalAccuracyBar = ({
+  stats,
+  winRate,
+  t,
+  setStats
+}: {
+  stats: SignalStats;
+  winRate: number;
+  t: any;
+  setStats: React.Dispatch<React.SetStateAction<SignalStats>>;
+}) => (
   <div className="w-full lg:w-64 bg-[#1a202c]/50 rounded-lg p-2 border border-white/5">
     <div className="flex justify-between items-center mb-1.5">
       <div className="flex items-center gap-1.5">
@@ -123,7 +162,6 @@ const LazyChart = React.memo(({ symbol, timeframe, exchange }: { symbol: string;
       case 'Gate.io': return 'GATEIO';
       case 'Bitget': return 'BITGET';
       case 'Kraken': return 'KRAKEN';
-      case 'Coinbase': return 'COINBASE';
       case 'Deribit': return 'DERIBIT';
       default: return 'BYBIT';
     }
@@ -132,20 +170,22 @@ const LazyChart = React.memo(({ symbol, timeframe, exchange }: { symbol: string;
   return (
     <div ref={containerRef} className="h-full w-full bg-[#0b0e14] relative overflow-hidden">
       {isVisible ? (
-        <AdvancedRealTimeChart
-          symbol={`${getExchangePrefix(exchange)}:${symbol}.P`}
-          theme="dark"
-          autosize
-          hide_side_toolbar={true}
-          hide_top_toolbar={true}
-          interval={timeframe as any}
-          timezone="Etc/UTC"
-          style="1"
-          locale="en"
-          enable_publishing={false}
-          allow_symbol_change={false}
-          save_image={false}
-        />
+        <Suspense fallback={<div className="flex flex-col items-center justify-center h-full w-full gap-2 opacity-10"><Activity className="w-6 h-6 animate-pulse text-slate-500" /></div>}>
+          <TradingViewChart
+            symbol={`${getExchangePrefix(exchange)}:${symbol}.P`}
+            theme="dark"
+            autosize
+            hide_side_toolbar={true}
+            hide_top_toolbar={true}
+            interval={timeframe as any}
+            timezone="Etc/UTC"
+            style="1"
+            locale="en"
+            enable_publishing={false}
+            allow_symbol_change={false}
+            save_image={false}
+          />
+        </Suspense>
       ) : (
         <div className="flex flex-col items-center justify-center h-full w-full gap-2 opacity-10">
           <Activity className="w-6 h-6 animate-pulse text-slate-500" />
@@ -158,22 +198,33 @@ const LazyChart = React.memo(({ symbol, timeframe, exchange }: { symbol: string;
 export const Screener: React.FC = () => {
   const { t, i18n } = useTranslation();
   const [selectedExchange, setSelectedExchange] = useState<Exchange>('Bybit');
-  const { tickers, loading, error, lastUpdated } = useTickers(selectedExchange);
+  const { tickers, selectedExchangeTickers, loading, error, lastUpdated } = useTickers(selectedExchange);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('turnover24h');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [selectedMarketKey, setSelectedMarketKey] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
   const [timeframe, setTimeframe] = useState<string>('5');
   const [activeFilter, setActiveFilter] = useState<'all' | 'signals' | 'near_levels' | 'consolidation' | 'new_listings'>('all');
-  const [analyzingSymbol, setAnalyzingSymbol] = useState<string | null>(null);
+  const [analyzingMarketKey, setAnalyzingMarketKey] = useState<string | null>(null);
+  const [showPremiumSignalsModal, setShowPremiumSignalsModal] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(true); // Default to true to prevent flash, then check in effect
   const [showTerms, setShowTerms] = useState(false);
   const [showExchangeMenu, setShowExchangeMenu] = useState(false);
   const exchangeMenuRef = useRef<HTMLDivElement>(null);
+  const [premiumSignalsUnlocked, setPremiumSignalsUnlocked] = useState(() => {
+    try {
+      const raw = localStorage.getItem(PREMIUM_SIGNALS_STORAGE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return parsed?.status === 'active';
+    } catch {
+      return false;
+    }
+  });
 
   // Signal Accuracy Tracking
-  const [stats, setStats] = useState(() => {
+  const [stats, setStats] = useState<SignalStats>(() => {
     try {
       const saved = localStorage.getItem('profit_hunter_signal_stats');
       return saved ? JSON.parse(saved) : { wins: 0, losses: 0 };
@@ -182,18 +233,34 @@ export const Screener: React.FC = () => {
     }
   });
 
-  const trackedSignalsRef = useRef<Record<string, { type: string; tp: number; sl: number; entry: number }>>({});
+  const trackedSignalsRef = useRef<Record<string, TrackedSignal>>({});
 
   useEffect(() => {
     localStorage.setItem('profit_hunter_signal_stats', JSON.stringify(stats));
   }, [stats]);
 
   useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== PREMIUM_SIGNALS_STORAGE_KEY) return;
+
+      try {
+        const parsed = event.newValue ? JSON.parse(event.newValue) : null;
+        setPremiumSignalsUnlocked(parsed?.status === 'active');
+      } catch {
+        setPremiumSignalsUnlocked(false);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
     if (tickers.length === 0) return;
 
     tickers.forEach(ticker => {
       const setup = getTradeSetup(ticker);
-      const symbol = ticker.symbol;
+      const symbol = getTickerMarketKey(ticker);
       const currentPrice = Number(ticker.lastPrice);
       const existing = trackedSignalsRef.current[symbol];
 
@@ -279,14 +346,16 @@ export const Screener: React.FC = () => {
     setShowTerms(false);
   };
   
-  const selectedTicker = useMemo(() => tickers.find(t => t.symbol === selectedSymbol) || null, [tickers, selectedSymbol]);
-  const { signal, klines, loading: signalLoading } = useCoinSignal(selectedSymbol, selectedTicker);
-
-  const tickersRef = useRef<BybitTicker[]>([]);
-  
-  useEffect(() => {
-    tickersRef.current = tickers;
-  }, [tickers]);
+  const selectedTicker = useMemo(
+    () => tickers.find((ticker) => getTickerMarketKey(ticker) === selectedMarketKey) || null,
+    [tickers, selectedMarketKey]
+  );
+  const analyzingTicker = useMemo(
+    () => tickers.find((ticker) => getTickerMarketKey(ticker) === analyzingMarketKey) || null,
+    [tickers, analyzingMarketKey]
+  );
+  const signalSymbol = selectedTicker?.exchange === 'Bybit' ? selectedTicker.symbol : null;
+  const { signal, klines, loading: signalLoading } = useCoinSignal(signalSymbol, selectedTicker);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -307,7 +376,9 @@ export const Screener: React.FC = () => {
   };
 
   const filteredAndSortedTickers = useMemo(() => {
-    let result = tickers.filter((t) =>
+    const baseTickers = activeFilter === 'signals' ? selectedExchangeTickers : tickers;
+
+    let result = baseTickers.filter((t) =>
       t.symbol.toLowerCase().includes(search.toLowerCase())
     );
 
@@ -315,7 +386,7 @@ export const Screener: React.FC = () => {
       result = result.filter((t) => {
         const signal = getSignalType(t);
         if (activeFilter === 'signals') {
-          return ['LONG_REV', 'SHORT_REV', 'LONG_TREND', 'SHORT_TREND'].includes(signal);
+          return SIGNAL_FILTER_TYPES.includes(signal);
         }
         if (activeFilter === 'consolidation') {
           return signal === 'CONS';
@@ -391,7 +462,20 @@ export const Screener: React.FC = () => {
     });
 
     return result;
-  }, [tickers, search, sortField, sortDirection, activeFilter]);
+  }, [tickers, selectedExchangeTickers, search, sortField, sortDirection, activeFilter]);
+
+  const hiddenSignalsCount = useMemo(() => {
+    if (activeFilter !== 'signals' || premiumSignalsUnlocked) return 0;
+    return Math.max(filteredAndSortedTickers.length - FREE_SIGNALS_LIMIT, 0);
+  }, [activeFilter, filteredAndSortedTickers.length, premiumSignalsUnlocked]);
+
+  const displayedTickers = useMemo(() => {
+    if (activeFilter !== 'signals' || premiumSignalsUnlocked) {
+      return filteredAndSortedTickers;
+    }
+
+    return filteredAndSortedTickers.slice(0, FREE_SIGNALS_LIMIT);
+  }, [activeFilter, filteredAndSortedTickers, premiumSignalsUnlocked]);
 
   const getColorClass = (val: number) => {
     if (val > 0) return 'text-emerald-400';
@@ -488,10 +572,10 @@ export const Screener: React.FC = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Header */}
-        <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-[#11151e] border-b border-white/5 shrink-0 gap-3 sm:gap-4">
+        <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between px-3 sm:px-6 py-4 sm:py-5 bg-[#11151e] border-b border-white/5 shrink-0 gap-4 sm:gap-5">
           <div className="flex items-center justify-between w-full lg:w-auto">
-            <div className="flex items-center gap-2 sm:gap-3 w-full lg:w-auto">
-              <div className="w-12 h-12 sm:w-24 sm:h-24 shrink-0 rounded-full border border-white/10 shadow-xl shadow-blue-500/20 overflow-hidden bg-[#1a202c] flex items-center justify-center p-1 sm:p-2">
+            <div className="flex items-center gap-3 sm:gap-4 w-full lg:w-auto">
+              <div className="w-16 h-16 sm:w-28 sm:h-28 lg:w-32 lg:h-32 shrink-0 rounded-full border border-white/10 shadow-xl shadow-blue-500/20 overflow-hidden bg-[#1a202c] flex items-center justify-center p-1.5 sm:p-2.5">
                 <img 
                   src="https://cdn-icons-png.flaticon.com/512/2489/2489756.png" 
                   alt="Profit Hunter Logo" 
@@ -501,7 +585,7 @@ export const Screener: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between lg:block">
-                  <h1 className="text-sm min-[380px]:text-base sm:text-2xl font-bold tracking-[0.2em] sm:tracking-[0.3em] leading-none mb-0.5 sm:mb-1 font-display uppercase italic shimmer-text relative whitespace-nowrap">
+                  <h1 className="text-lg min-[380px]:text-xl sm:text-3xl lg:text-4xl font-bold tracking-[0.18em] sm:tracking-[0.24em] leading-none mb-1 sm:mb-1.5 font-display uppercase italic shimmer-text relative whitespace-nowrap">
                     Profit Hunter
                   </h1>
                   {/* Mobile Top Right Controls */}
@@ -524,17 +608,17 @@ export const Screener: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="text-[8px] sm:text-[10px] text-blue-400 font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-1 sm:mb-1.5 opacity-80">
+                <div className="text-[10px] sm:text-xs lg:text-sm text-blue-400 font-bold uppercase tracking-[0.18em] sm:tracking-[0.24em] mb-1.5 sm:mb-2 opacity-80">
                   Pro Crypto Screener
                 </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[8px] sm:text-xs text-slate-500">
+                <div className="flex items-center gap-2 sm:gap-2.5 text-[10px] sm:text-sm lg:text-base text-slate-400 font-medium">
                   <span className="flex items-center gap-1">
-                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                     {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <span>•</span>
                   <span className="flex items-center gap-1">
-                    <div className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${error ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${error ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
                     {error ? 'Offline' : 'Online'}
                   </span>
                   <span>•</span>
@@ -555,7 +639,7 @@ export const Screener: React.FC = () => {
                   className="pl-9 pr-4 py-1.5 bg-[#1a202c] border border-white/10 rounded-md text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all w-64 placeholder:text-slate-600"
                 />
               </div>
-              <SignalAccuracyBar stats={stats} winRate={winRate} t={t} />
+              <SignalAccuracyBar stats={stats} winRate={winRate} t={t} setStats={setStats} />
             </div>
           </div>
 
@@ -582,7 +666,7 @@ export const Screener: React.FC = () => {
                         <div className="px-2 py-1 mb-1">
                           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{data.label}</div>
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="flex flex-col gap-1.5">
                           {data.exchanges.map((ex) => (
                             <button
                               key={ex}
@@ -590,7 +674,7 @@ export const Screener: React.FC = () => {
                                 setSelectedExchange(ex);
                                 setShowExchangeMenu(false);
                               }}
-                              className={`px-3 py-2.5 rounded-lg text-left text-xs font-medium transition-all flex items-center gap-2 ${
+                              className={`w-full px-3 py-2.5 rounded-lg text-left text-xs font-medium transition-all flex items-center gap-2 ${
                                 selectedExchange === ex
                                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                   : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
@@ -680,7 +764,7 @@ export const Screener: React.FC = () => {
 
               {/* Mobile Signal Accuracy Bar */}
               <div className="lg:hidden">
-                <SignalAccuracyBar stats={stats} winRate={winRate} t={t} />
+                <SignalAccuracyBar stats={stats} winRate={winRate} t={t} setStats={setStats} />
               </div>
             </div>
 
@@ -744,7 +828,7 @@ export const Screener: React.FC = () => {
                 {t('Refresh Application')}
               </button>
             </div>
-          ) : filteredAndSortedTickers.length === 0 ? (
+          ) : displayedTickers.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
               <Search className="w-12 h-12 mb-4 opacity-20" />
               <p>{
@@ -755,25 +839,26 @@ export const Screener: React.FC = () => {
             </div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredAndSortedTickers.map((ticker) => {
+              {displayedTickers.map((ticker) => {
                 const change1h = calc1hChange(ticker.lastPrice, ticker.prevPrice1h);
                 const change24h = Number(ticker.price24hPcnt) * 100;
                 const funding = Number(ticker.fundingRate) * 100;
-                const isSelected = selectedSymbol === ticker.symbol;
+                const marketKey = getTickerMarketKey(ticker);
+                const isSelected = selectedMarketKey === marketKey;
 
                 return (
                   <div 
-                    key={ticker.symbol} 
+                    key={marketKey} 
                     className={`bg-[#11151e] rounded-xl border overflow-hidden flex flex-col transition-all duration-200 ${
                       isSelected ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'border-white/5 hover:border-white/20'
                     }`}
                   >
                     <div className="h-64 sm:h-80 w-full border-b border-white/5 bg-[#0b0e14]">
-                      <LazyChart key={`${ticker.symbol}-${timeframe}-${selectedExchange}`} symbol={ticker.symbol} timeframe={timeframe} exchange={selectedExchange} />
+                      <LazyChart key={`${marketKey}-${timeframe}`} symbol={ticker.symbol} timeframe={timeframe} exchange={ticker.exchange || 'Bybit'} />
                     </div>
                     <div 
                       className="p-3 sm:p-4 flex flex-col gap-3 sm:gap-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
-                      onClick={() => setSelectedSymbol(ticker.symbol)}
+                      onClick={() => setSelectedMarketKey(marketKey)}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -815,13 +900,17 @@ export const Screener: React.FC = () => {
                       </div>
 
                       <div className="flex items-center justify-between mt-1 pt-2 sm:pt-3 border-t border-white/5">
-                        <div className="text-[10px] sm:text-xs font-medium">{getQuickSignal(ticker)}</div>
+                        <div className="flex items-center gap-2 text-[10px] sm:text-xs font-medium">
+                          <span>{getQuickSignal(ticker)}</span>
+                          <span className="text-slate-500">{ticker.exchange || 'Bybit'}</span>
+                        </div>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            setAnalyzingSymbol(ticker.symbol);
+                            setAnalyzingMarketKey(marketKey);
                           }}
-                          className="relative overflow-hidden text-[10px] sm:text-xs font-bold bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all group"
+                          title={t('Pro Analysis')}
+                          className="relative overflow-hidden text-[10px] sm:text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all group bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30"
                         >
                           <span className="relative z-10">{t('Pro Analysis')}</span>
                           <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-amber-300/60 to-transparent animate-glare z-0"></div>
@@ -879,6 +968,32 @@ export const Screener: React.FC = () => {
                   </div>
                 );
               })}
+              {activeFilter === 'signals' && hiddenSignalsCount > 0 && (
+                <div className="bg-[#11151e] rounded-xl border border-amber-500/20 overflow-hidden flex flex-col justify-center p-5 sm:p-6 relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-yellow-500/10 pointer-events-none" />
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="w-5 h-5 text-amber-400" />
+                      <span className="text-xs font-black tracking-[0.25em] uppercase text-amber-300/80">
+                        {t('Premium Signals')}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-black text-white mb-2">
+                      +{hiddenSignalsCount} {t('more signals locked')}
+                    </h3>
+                    <p className="text-sm text-slate-300 mb-5 leading-relaxed">
+                      {t('You are seeing the first 10 signals for free. Connect your wallet and confirm payment to unlock the rest.')}
+                    </p>
+                    <button
+                      onClick={() => setShowPremiumSignalsModal(true)}
+                      className="relative overflow-hidden text-xs sm:text-sm font-bold px-4 py-3 rounded-xl transition-all group bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30 w-full"
+                    >
+                      <span className="relative z-10">{t('Buy Premium')}</span>
+                      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-amber-300/60 to-transparent animate-glare z-0"></div>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto no-scrollbar -mx-4 sm:-mx-6">
@@ -951,16 +1066,17 @@ export const Screener: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredAndSortedTickers.map((ticker) => {
+                {displayedTickers.map((ticker) => {
                   const change1h = calc1hChange(ticker.lastPrice, ticker.prevPrice1h);
                   const change24h = Number(ticker.price24hPcnt) * 100;
                   const funding = Number(ticker.fundingRate) * 100;
-                  const isSelected = selectedSymbol === ticker.symbol;
+                  const marketKey = getTickerMarketKey(ticker);
+                  const isSelected = selectedMarketKey === marketKey;
                   
                   return (
                     <tr 
-                      key={ticker.symbol} 
-                      onClick={() => setSelectedSymbol(ticker.symbol)}
+                      key={marketKey} 
+                      onClick={() => setSelectedMarketKey(marketKey)}
                       className={`cursor-pointer transition-colors group ${
                         isSelected ? 'bg-blue-500/10 border-l-2 border-blue-500' : 'hover:bg-[#1a202c] border-l-2 border-transparent'
                       }`}
@@ -973,7 +1089,7 @@ export const Screener: React.FC = () => {
                       </td>
                       <td className="px-4 sm:px-6 py-3 sm:py-4 font-medium">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                          {ticker.exchange || selectedExchange}
+                          {ticker.exchange || 'Bybit'}
                         </span>
                       </td>
                       <td className="px-4 sm:px-6 py-3 sm:py-4 font-medium">
@@ -1030,9 +1146,10 @@ export const Screener: React.FC = () => {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAnalyzingSymbol(ticker.symbol);
+                              setAnalyzingMarketKey(marketKey);
                             }}
-                            className="relative overflow-hidden text-[10px] sm:text-xs font-bold bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded transition-all group"
+                            title={t('Pro Analysis')}
+                            className="relative overflow-hidden text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded transition-all group bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30"
                           >
                             <span className="relative z-10">{t('Pro Analysis')}</span>
                             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-amber-300/60 to-transparent animate-glare z-0"></div>
@@ -1057,6 +1174,35 @@ export const Screener: React.FC = () => {
                     </tr>
                   );
                 })}
+                {activeFilter === 'signals' && hiddenSignalsCount > 0 && (
+                  <tr className="border-l-2 border-amber-500/50 bg-amber-500/5">
+                    <td className="px-4 sm:px-6 py-4 sm:py-5" colSpan={13}>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.25em] text-amber-300/80 font-black mb-1">
+                            {t('Premium Signals')}
+                          </div>
+                          <div className="text-white font-bold text-sm sm:text-base">
+                            +{hiddenSignalsCount} {t('more signals locked')}
+                          </div>
+                          <div className="text-slate-400 text-xs mt-1">
+                            {t('First 10 signals are free. Connect wallet and confirm payment to unlock the full stream.')}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowPremiumSignalsModal(true);
+                          }}
+                          className="relative overflow-hidden text-[10px] sm:text-xs font-bold px-4 py-3 rounded-xl transition-all group bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-400 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30 sm:min-w-[180px]"
+                        >
+                          <span className="relative z-10">{t('Buy Premium')}</span>
+                          <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-amber-300/60 to-transparent animate-glare z-0"></div>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1098,23 +1244,40 @@ export const Screener: React.FC = () => {
       </div>
 
       {/* Side Panel for Signals */}
-      {selectedSymbol && (
-        <SignalPanel 
-          symbol={selectedSymbol} 
-          signal={signal} 
-          klines={klines}
-          loading={signalLoading} 
-          onClose={() => setSelectedSymbol(null)} 
-          onAnalyze={() => setAnalyzingSymbol(selectedSymbol)}
-        />
+      {selectedTicker?.exchange === 'Bybit' && (
+        <Suspense fallback={null}>
+          <SignalPanel 
+            symbol={selectedTicker.symbol} 
+            signal={signal} 
+            klines={klines}
+            loading={signalLoading} 
+            onClose={() => setSelectedMarketKey(null)} 
+            onAnalyze={() => setAnalyzingMarketKey(getTickerMarketKey(selectedTicker))}
+          />
+        </Suspense>
       )}
 
       {/* Pro Analysis Modal */}
-      {analyzingSymbol && tickers.find(t => t.symbol === analyzingSymbol) && (
-        <ProAnalysisModal 
-          ticker={tickers.find(t => t.symbol === analyzingSymbol)!} 
-          onClose={() => setAnalyzingSymbol(null)} 
-        />
+      {analyzingTicker && (
+        <Suspense fallback={null}>
+          <ProAnalysisModal 
+            ticker={analyzingTicker} 
+            onClose={() => setAnalyzingMarketKey(null)} 
+          />
+        </Suspense>
+      )}
+
+      {showPremiumSignalsModal && (
+        <Suspense fallback={null}>
+          <PremiumSignalsModal
+            hiddenSignalsCount={hiddenSignalsCount}
+            onClose={() => setShowPremiumSignalsModal(false)}
+            onUnlocked={() => {
+              setPremiumSignalsUnlocked(true);
+              setShowPremiumSignalsModal(false);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Terms of Use Modal */}

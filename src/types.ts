@@ -1,6 +1,5 @@
 export type Exchange = 
   | 'Binance' 
-  | 'Coinbase' 
   | 'Kraken' 
   | 'OKX' 
   | 'Bybit' 
@@ -13,6 +12,7 @@ export type Exchange =
 export interface BybitTicker {
   symbol: string;
   exchange?: Exchange;
+  exchangeSymbol?: string;
   lastPrice: string;
   indexPrice: string;
   markPrice: string;
