@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -58,7 +59,8 @@ async function startServer() {
     res.json({
       NODE_ENV: process.env.NODE_ENV,
       cwd: process.cwd(),
-      distExists: fs.existsSync(path.join(process.cwd(), 'dist'))
+      distExists: fs.existsSync(path.join(process.cwd(), 'dist')),
+      APP_URL: process.env.APP_URL
     });
   });
 
@@ -77,8 +79,96 @@ async function startServer() {
   });
 
   app.get("/api/tickers", async (req, res) => {
+    const { exchange = 'Bybit' } = req.query;
     try {
-      console.log(`[${new Date().toISOString()}] Fetching tickers from Bybit...`);
+      console.log(`[${new Date().toISOString()}] Fetching tickers from ${exchange}...`);
+      
+      if (exchange === 'Binance') {
+        const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr', { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
+        const data = await response.json();
+        const list = data.filter((t: any) => t.symbol.endsWith('USDT')).map((t: any) => ({
+          symbol: t.symbol,
+          lastPrice: t.lastPrice,
+          price24hPcnt: (Number(t.priceChangePercent) / 100).toString(),
+          highPrice24h: t.highPrice,
+          lowPrice24h: t.lowPrice,
+          turnover24h: t.quoteVolume,
+          volume24h: t.volume,
+          exchange: 'Binance'
+        }));
+        return res.json({ retCode: 0, result: { list } });
+      }
+
+      if (exchange === 'OKX') {
+        const response = await fetch('https://www.okx.com/api/v5/market/tickers?instType=SWAP', { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`OKX API error: ${response.status}`);
+        const data = await response.json();
+        const list = data.data.filter((t: any) => t.instId.endsWith('USDT-SWAP')).map((t: any) => ({
+          symbol: t.instId.replace('-SWAP', '').replace('-', ''),
+          lastPrice: t.last,
+          price24hPcnt: ((Number(t.last) - Number(t.open24h)) / Number(t.open24h)).toString(),
+          highPrice24h: t.high24h,
+          lowPrice24h: t.low24h,
+          turnover24h: t.volVal24h,
+          volume24h: t.vol24h,
+          exchange: 'OKX'
+        }));
+        return res.json({ retCode: 0, result: { list } });
+      }
+
+      if (exchange === 'KuCoin') {
+        const response = await fetch('https://api-futures.kucoin.com/api/v1/allTickers', { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`KuCoin API error: ${response.status}`);
+        const data = await response.json();
+        const list = data.data.filter((t: any) => t.symbol.endsWith('USDTM')).map((t: any) => ({
+          symbol: t.symbol.replace('USDTM', 'USDT'),
+          lastPrice: t.lastPrice,
+          price24hPcnt: t.changeRate.toString(),
+          highPrice24h: t.highPrice || t.lastPrice,
+          lowPrice24h: t.lowPrice || t.lastPrice,
+          turnover24h: t.turnover,
+          volume24h: t.volume,
+          exchange: 'KuCoin'
+        }));
+        return res.json({ retCode: 0, result: { list } });
+      }
+
+      if (exchange === 'MEXC') {
+        const response = await fetch('https://contract.mexc.com/api/v1/contract/ticker', { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`MEXC API error: ${response.status}`);
+        const data = await response.json();
+        const list = data.data.filter((t: any) => t.symbol.endsWith('_USDT')).map((t: any) => ({
+          symbol: t.symbol.replace('_', ''),
+          lastPrice: t.lastPrice.toString(),
+          price24hPcnt: t.riseFallRate.toString(),
+          highPrice24h: t.highPrice24h.toString(),
+          lowPrice24h: t.lowPrice24h.toString(),
+          turnover24h: t.amount24.toString(),
+          volume24h: t.volume24.toString(),
+          exchange: 'MEXC'
+        }));
+        return res.json({ retCode: 0, result: { list } });
+      }
+
+      if (exchange === 'Gate.io') {
+        const response = await fetch('https://api.gateio.ws/api/v4/futures/usdt/tickers', { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`Gate.io API error: ${response.status}`);
+        const data = await response.json();
+        const list = data.map((t: any) => ({
+          symbol: t.contract.replace('_', ''),
+          lastPrice: t.last,
+          price24hPcnt: (Number(t.change_percentage) / 100).toString(),
+          highPrice24h: t.high_24h,
+          lowPrice24h: t.low_24h,
+          turnover24h: t.quote_volume,
+          volume24h: t.volume_24h,
+          exchange: 'Gate.io'
+        }));
+        return res.json({ retCode: 0, result: { list } });
+      }
+
+      // Default to Bybit
       const [tickersResponse, instruments] = await Promise.all([
         fetch('https://api.bybit.com/v5/market/tickers?category=linear', { signal: AbortSignal.timeout(10000) }).catch(e => {
           console.error('Tickers fetch failed:', e);
@@ -99,14 +189,15 @@ async function startServer() {
       if (data.result && data.result.list) {
         data.result.list = data.result.list.map((ticker: any) => ({
           ...ticker,
-          launchTime: instruments[ticker.symbol] || '0'
+          launchTime: instruments[ticker.symbol] || '0',
+          exchange: 'Bybit'
         }));
       }
       
       res.json(data);
     } catch (error) {
-      console.error('Error in /api/market-data:', error);
-      res.status(500).json({ error: 'Failed to fetch tickers', details: error instanceof Error ? error.message : String(error) });
+      console.error(`Error in /api/tickers for ${exchange}:`, error);
+      res.status(500).json({ error: `Failed to fetch tickers from ${exchange}`, details: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -152,6 +243,39 @@ async function startServer() {
     } catch (error) {
       console.error('Error fetching advanced klines:', error);
       res.status(500).json({ error: 'Failed to fetch advanced klines' });
+    }
+  });
+
+  app.get("/api/pro-analysis-data", async (req, res) => {
+    const { symbol } = req.query;
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+    try {
+      const [klineRes, oiRes, binanceRes] = await Promise.allSettled([
+        fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=5&limit=21`),
+        fetch(`https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${symbol}&intervalTime=5m&limit=2`),
+        fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`)
+      ]);
+
+      let klines = null;
+      let oiData = null;
+      let binanceData = null;
+
+      if (klineRes.status === 'fulfilled' && klineRes.value.ok) {
+        klines = await klineRes.value.json();
+      }
+      if (oiRes.status === 'fulfilled' && oiRes.value.ok) {
+        oiData = await oiRes.value.json();
+      }
+      if (binanceRes.status === 'fulfilled' && binanceRes.value.ok) {
+        binanceData = await binanceRes.value.json();
+      }
+
+      res.json({ klines, oiData, binanceData });
+    } catch (error) {
+      console.error('Error fetching pro analysis data:', error);
+      res.status(500).json({ error: 'Failed to fetch pro analysis data' });
     }
   });
 

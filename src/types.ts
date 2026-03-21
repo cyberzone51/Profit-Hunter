@@ -1,5 +1,18 @@
+export type Exchange = 
+  | 'Binance' 
+  | 'Coinbase' 
+  | 'Kraken' 
+  | 'OKX' 
+  | 'Bybit' 
+  | 'Bitget' 
+  | 'Deribit' 
+  | 'KuCoin' 
+  | 'MEXC' 
+  | 'Gate.io';
+
 export interface BybitTicker {
   symbol: string;
+  exchange?: Exchange;
   lastPrice: string;
   indexPrice: string;
   markPrice: string;
@@ -15,6 +28,10 @@ export interface BybitTicker {
   fundingRate: string;
   nextFundingTime: string;
   launchTime?: string;
+  ask1Price?: string;
+  bid1Price?: string;
+  ask1Size?: string;
+  bid1Size?: string;
 }
 
 export type SortField = 
@@ -50,6 +67,9 @@ export interface TradingSignal {
   takeProfit2: number;
   stopLoss: number;
   riskReward: number;
+  winRate: number;
+  wins?: number;
+  losses?: number;
   indicators: {
     ema20: number;
     ema50: number;

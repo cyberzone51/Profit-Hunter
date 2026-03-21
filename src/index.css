@@ -16,6 +16,15 @@
   }
 }
 
+@keyframes glare {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}
+
+.animate-glare {
+  animation: glare 2s infinite;
+}
+
 .shimmer-text {
   color: #ffffff;
   display: inline-block;

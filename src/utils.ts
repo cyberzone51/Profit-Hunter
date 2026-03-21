@@ -1,3 +1,5 @@
+import { rlOptimizer } from './utils/rl';
+
 export const formatPrice = (price: string | number): string => {
   const p = Number(price);
   if (isNaN(p)) return '0.00';
@@ -56,4 +58,64 @@ export const getSignalType = (ticker: any) => {
   if (funding < -0.1) return 'OVERHEATED_SHORT';
   
   return 'NONE';
+};
+
+export const getTradeSetup = (ticker: any) => {
+  const price = Number(ticker.lastPrice);
+  const high = Number(ticker.highPrice24h);
+  const low = Number(ticker.lowPrice24h);
+  const range = high - low;
+  
+  if (range === 0 || price === 0) return null;
+
+  const distToHigh = (high - price) / price;
+  const distToLow = (price - low) / price;
+  const volPct = range / low;
+  
+  if (volPct < 0.02) return null; // Need at least 2% daily volatility
+
+  let type: 'LONG' | 'SHORT' | null = null;
+  let entry = 0;
+  let sl = 0;
+  let tp = 0;
+  let setupName = '';
+
+  // Breakout Long
+  if (distToHigh < 0.02 && Number(ticker.price24hPcnt) > 0.03) {
+    type = 'LONG';
+    setupName = 'Breakout';
+    entry = high;
+    sl = high - (range * 0.15);
+    tp = entry + ((entry - sl) * 2);
+  }
+  // Breakdown Short
+  else if (distToLow < 0.02 && Number(ticker.price24hPcnt) < -0.03) {
+    type = 'SHORT';
+    setupName = 'Breakdown';
+    entry = low;
+    sl = low + (range * 0.15);
+    tp = entry - ((sl - entry) * 2);
+  }
+  // Reversal Long
+  else if (distToLow < 0.04 && Number(ticker.price24hPcnt) < -0.04) {
+    type = 'LONG';
+    setupName = 'Reversal';
+    entry = price;
+    sl = low * 0.99;
+    tp = entry + ((entry - sl) * 2);
+  }
+  // Reversal Short
+  else if (distToHigh < 0.04 && Number(ticker.price24hPcnt) > 0.04) {
+    type = 'SHORT';
+    setupName = 'Reversal';
+    entry = price;
+    sl = high * 1.01;
+    tp = entry - ((sl - entry) * 2);
+  }
+
+  if (!type) return null;
+
+  const stats = rlOptimizer.getStats(ticker.symbol);
+
+  return { type, setupName, entry, sl, tp, winRate: stats.winRate, wins: stats.wins, losses: stats.losses };
 };

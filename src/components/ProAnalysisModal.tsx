@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Activity, TrendingUp, TrendingDown, Target, Shield, AlertTriangle, Zap, BarChart2, Waves, ActivitySquare, ArrowUpRight, ArrowDownRight, Layers, Lock, Wallet, CheckCircle2 } from 'lucide-react';
+import { X, Activity, TrendingUp, TrendingDown, Target, Shield, AlertTriangle, Zap, BarChart2, Waves, ActivitySquare, ArrowUpRight, ArrowDownRight, Layers, Lock, Wallet, CheckCircle2, BrainCircuit, Anchor, Scale, Globe2, Crosshair } from 'lucide-react';
 import { BybitTicker } from '../types';
-import { useCoinSignal } from '../hooks/useCoinSignal';
+import { useProAnalysis } from '../hooks/useProAnalysis';
 import { formatPrice as utilsFormatPrice } from '../utils';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { useAccount, useDisconnect } from 'wagmi';
@@ -14,7 +14,7 @@ interface ProAnalysisModalProps {
 
 export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onClose }) => {
   const { t } = useTranslation();
-  const { signal, loading } = useCoinSignal(ticker.symbol, ticker);
+  const { result, loading, error } = useProAnalysis(ticker);
   const { open } = useWeb3Modal();
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
@@ -44,12 +44,18 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
     }, 2000);
   };
 
+  const formatNumber = (num: number) => {
+    if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+    if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+    if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+    return num.toFixed(2);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      {/* Backdrop - non-clickable as per user request "okno ne dolgno byt klikabelno tolko knopka" */}
       <div className="absolute inset-0" />
       
-      <div className="relative bg-[#11151e] border-x sm:border border-white/10 rounded-none sm:rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[90vh]">
+      <div className="relative bg-[#11151e] border-x sm:border border-white/10 rounded-none sm:rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[90vh]">
         
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-white/5 bg-[#1a202c] shrink-0">
@@ -59,7 +65,7 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                {t('Pro Analysis')} <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full font-bold">AI</span>
+                {t('Pro Analysis')} <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">AI</span>
               </h2>
               <p className="text-[10px] sm:text-xs text-slate-400">{ticker.symbol.replace('USDT', '')} / USDT</p>
             </div>
@@ -151,282 +157,310 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
                 {t('Calculating technical indicators and running institutional models for')} {ticker.symbol}...
               </p>
             </div>
-          ) : signal ? (
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <AlertTriangle className="w-12 h-12 text-rose-500 mb-4" />
+              <h3 className="text-lg font-bold text-white mb-2">{t('Analysis Failed')}</h3>
+              <p className="text-slate-400 text-sm">{error}</p>
+            </div>
+          ) : result ? (
             <div className="space-y-5 sm:space-y-6">
               
+              {/* Elite Trade Banner */}
+              {result.signal === 'ELITE TRADE' && (
+                <div className="bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border border-amber-500/50 rounded-xl p-4 flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center">
+                      <Zap className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-amber-400 font-black text-lg tracking-wider">ELITE TRADE DETECTED</h3>
+                      <p className="text-amber-400/80 text-xs">Arbitrage + OI Growth + Volume Spike + Leader Exchange Confluence</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Top Verdict Card */}
               <div className={`p-4 sm:p-6 rounded-xl border ${
-                signal.direction === 'LONG' ? 'bg-emerald-500/10 border-emerald-500/20' : 
-                signal.direction === 'SHORT' ? 'bg-rose-500/10 border-rose-500/20' : 
+                result.signal === 'ELITE TRADE' ? 'bg-amber-500/10 border-amber-500/30' :
+                result.signal.includes('LONG') ? 'bg-emerald-500/10 border-emerald-500/20' : 
+                result.signal.includes('SHORT') ? 'bg-rose-500/10 border-rose-500/20' : 
                 'bg-slate-500/10 border-slate-500/20'
               }`}>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      {signal.direction === 'LONG' ? <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" /> : 
-                       signal.direction === 'SHORT' ? <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" /> : 
+                      {result.signal === 'ELITE TRADE' ? <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" /> :
+                       result.signal.includes('LONG') ? <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" /> : 
+                       result.signal.includes('SHORT') ? <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400" /> : 
                        <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />}
                       <h3 className={`text-xl sm:text-2xl font-black ${
-                        signal.direction === 'LONG' ? 'text-emerald-400' : 
-                        signal.direction === 'SHORT' ? 'text-rose-400' : 
+                        result.signal === 'ELITE TRADE' ? 'text-amber-400' :
+                        result.signal.includes('LONG') ? 'text-emerald-400' : 
+                        result.signal.includes('SHORT') ? 'text-rose-400' : 
                         'text-slate-400'
                       }`}>
-                        {signal.direction === 'LONG' ? t('STRONG BUY') : 
-                         signal.direction === 'SHORT' ? t('STRONG SELL') : t('NEUTRAL')}
+                        {result.signal === 'NEUTRAL' ? t('NO ACTIVE SIGNAL') : t(result.signal)}
                       </h3>
                     </div>
-                    <p className="text-xs sm:text-sm text-slate-300 font-medium">{t(signal.type)}</p>
+                    <p className="text-xs sm:text-sm text-slate-300 font-medium">
+                      {!result.candidate ? (
+                        <span className="text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> {t('Rejected')}: {result.rejectReason}</span>
+                      ) : result.aiProbability < 50 ? (
+                        <span className="text-amber-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> {t('Low AI Probability')}</span>
+                      ) : result.score >= 7 ? t('High Probability Trade') : t('Candidate (Wait for better setup)')}
+                    </p>
                   </div>
                   
                   <div className="flex items-center gap-3 sm:gap-4 bg-[#0b0e14] p-2.5 sm:p-3 rounded-lg border border-white/5 w-full sm:w-auto justify-around sm:justify-start">
                     <div className="text-center">
-                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Confidence')}</div>
-                      <div className="text-lg sm:text-xl font-black text-white">{signal.score}%</div>
+                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1 flex items-center justify-center gap-1"><BrainCircuit className="w-3 h-3"/> AI Prob</div>
+                      <div className={`text-lg sm:text-xl font-black ${result.aiProbability >= 80 ? 'text-emerald-400' : result.aiProbability >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {result.aiProbability}%
+                      </div>
                     </div>
                     <div className="w-px h-6 sm:h-8 bg-white/10"></div>
                     <div className="text-center">
-                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Risk/Reward')}</div>
-                      <div className="text-lg sm:text-xl font-black text-white">1:{signal.riskReward.toFixed(1)}</div>
+                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1 flex items-center justify-center gap-1"><Zap className="w-3 h-3"/> Win Rate</div>
+                      <div className={`text-lg sm:text-xl font-black ${result.winRate >= 0.6 ? 'text-emerald-400' : result.winRate >= 0.4 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {result.winRate > 0 ? (result.winRate * 100).toFixed(1) + '%' : '-'}
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed italic">
-                    {signal.type.toLowerCase().includes('trend') 
-                      ? t('The market is currently in a strong trending phase. Technical indicators suggest following the current momentum rather than looking for immediate reversals.')
-                      : t('The asset is currently consolidating within a narrow range. Volatility is low and no clear directional bias has emerged yet. We recommend waiting for a confirmed breakout before entering new positions.')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Trade Setup */}
-              <div>
-                <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                  <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> {t('Trade Setup')}
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
-                  <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                    <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Entry Price')}</div>
-                    <div className="text-base sm:text-lg font-mono font-bold text-white">{formatPrice(signal.entryPrice)}</div>
-                  </div>
-                  <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                    <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Take Profit 1')}</div>
-                    <div className="text-base sm:text-lg font-mono font-bold text-emerald-400">{formatPrice(signal.takeProfit1)}</div>
-                  </div>
-                  <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                    <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Take Profit 2')}</div>
-                    <div className="text-base sm:text-lg font-mono font-bold text-emerald-500">{formatPrice(signal.takeProfit2)}</div>
-                  </div>
-                  <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-rose-500/20">
-                    <div className="text-[10px] sm:text-xs text-rose-400/70 mb-0.5 sm:mb-1">{t('Stop Loss')}</div>
-                    <div className="text-base sm:text-lg font-mono font-bold text-rose-400">{formatPrice(signal.stopLoss)}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 8 Categories Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                
-                {/* 1. Trend Indicators */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" /> 1. {t('Trend')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">EMA (20/50/200)</span>
-                      <span className={`font-mono font-bold ${signal.indicators.ema20 > signal.indicators.ema50 && signal.indicators.ema50 > signal.indicators.ema200 ? 'text-emerald-400' : signal.indicators.ema20 < signal.indicators.ema50 && signal.indicators.ema50 < signal.indicators.ema200 ? 'text-rose-400' : 'text-amber-400'}`}>
-                        {signal.indicators.ema20 > signal.indicators.ema50 && signal.indicators.ema50 > signal.indicators.ema200 ? t('Strong Uptrend') : signal.indicators.ema20 < signal.indicators.ema50 && signal.indicators.ema50 < signal.indicators.ema200 ? t('Strong Downtrend') : t('Mixed')}
-                      </span>
+                    <div className="w-px h-6 sm:h-8 bg-white/10"></div>
+                    <div className="text-center">
+                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Score')}</div>
+                      <div className={`text-lg sm:text-xl font-black ${result.score >= 7 ? 'text-emerald-400' : 'text-white'}`}>{result.score.toFixed(1)} / 11</div>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">ADX ({t('Trend Strength')})</span>
-                      <span className={`font-mono font-bold ${signal.indicators.adx > 40 ? 'text-emerald-400' : signal.indicators.adx > 25 ? 'text-blue-400' : 'text-slate-400'}`}>
-                        {signal.indicators.adx.toFixed(1)} ({signal.indicators.adx > 40 ? t('Strong') : signal.indicators.adx > 25 ? t('Beginning') : t('Flat')})
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Momentum Indicators */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" /> 2. {t('Momentum')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">RSI (14)</span>
-                      <span className={`font-mono font-bold ${signal.indicators.rsi > 70 ? 'text-rose-400' : signal.indicators.rsi < 30 ? 'text-emerald-400' : 'text-white'}`}>
-                        {signal.indicators.rsi.toFixed(1)} ({signal.indicators.rsi > 70 ? t('Overbought') : signal.indicators.rsi < 30 ? t('Oversold') : t('Neutral')})
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">MACD (12,26,9)</span>
-                      <span className={`font-mono font-bold ${signal.indicators.macd.hist > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {signal.indicators.macd.hist > 0 ? t('Bullish Cross') : t('Bearish Cross')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Volume Indicators */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <BarChart2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" /> 3. {t('Volume')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">VWAP</span>
-                      <span className={`font-mono font-bold ${Number(ticker.lastPrice) > signal.indicators.vwap ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {formatPrice(signal.indicators.vwap)} ({Number(ticker.lastPrice) > signal.indicators.vwap ? t('Bullish') : t('Bearish')})
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">OBV Trend</span>
-                      <span className={`font-mono font-bold ${signal.direction === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {signal.direction === 'LONG' ? t('Accumulation') : t('Distribution')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Volatility Indicators */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <ActivitySquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" /> 4. {t('Volatility')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">Bollinger Bands</span>
-                      <span className="font-mono font-bold text-white">
-                        {Number(ticker.lastPrice) > signal.indicators.bb.upper ? t('Overbought') : Number(ticker.lastPrice) < signal.indicators.bb.lower ? t('Oversold') : t('In Channel')}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">ATR ({t('Stop Loss ref')})</span>
-                      <span className="font-mono font-bold text-white">
-                        {formatPrice(signal.indicators.atr)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Market Structure */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400" /> 5. {t('Market Structure')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Elliott Wave Phase')}</span>
-                      <span className="font-mono font-bold text-white">
-                        {t(signal.indicators.elliottWave)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Nearest Fibonacci')}</span>
-                      <span className="font-mono font-bold text-white">
-                        {signal.indicators.fibonacci.nearestLevel} ({formatPrice(signal.indicators.fibonacci.value)})
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 6. Crypto Metrics */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <Waves className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" /> 6. {t('Crypto Metrics')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Funding Rate')}</span>
-                      <span className={`font-mono font-bold ${Number(ticker.fundingRate) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {(Number(ticker.fundingRate) * 100).toFixed(4)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Open Interest')}</span>
-                      <span className="font-mono font-bold text-white">
-                        ${(Number(ticker.openInterestValue) / 1000000).toFixed(2)}M
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 7. Institutional Flow */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400" /> 7. {t('Institutional Flow')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('OI 24h Change')}</span>
-                      <span className={`font-mono font-bold ${signal.indicators.oiChange24h > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {signal.indicators.oiChange24h > 0 ? '+' : ''}{signal.indicators.oiChange24h.toFixed(2)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Volume Spike')}</span>
-                      <span className={`font-mono font-bold ${signal.indicators.volumeSpike ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        {signal.indicators.volumeSpike ? t('DETECTED') : t('Normal')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 8. Liquidity Map */}
-                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
-                  <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex items-center gap-2">
-                    <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" /> 8. {t('Liquidity Levels')}
-                  </h4>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex justify-between items-start text-[11px] sm:text-sm">
-                      <span className="text-slate-400">{t('Major Liquidity')}</span>
-                      <div className="text-right">
-                        <div className="text-rose-400 font-mono text-[10px] sm:text-xs">R: {formatPrice(signal.indicators.liquidityLevels.resistance[0])}</div>
-                        <div className="text-emerald-400 font-mono text-[10px] sm:text-xs">S: {formatPrice(signal.indicators.liquidityLevels.support[0])}</div>
+                    <div className="w-px h-6 sm:h-8 bg-white/10"></div>
+                    <div className="text-center">
+                      <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 sm:mb-1">{t('Delta')}</div>
+                      <div className={`text-lg sm:text-xl font-black ${result.metrics.delta > 0 ? 'text-emerald-400' : result.metrics.delta < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                        {result.metrics.delta > 0 ? '+' : ''}{formatNumber(result.metrics.delta)}
                       </div>
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Advanced Metrics Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                
+                {/* Cross-Exchange / Arbitrage */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Globe2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400" /> {t('Cross-Exchange')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">{result.scoreDetails.arbitrage}/2 pts</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Arbitrage Spread</span>
+                      <span className={`font-mono font-bold ${result.metrics.crossSpread >= 0.5 ? 'text-emerald-400' : 'text-slate-300'}`}>
+                        {result.metrics.crossSpread.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Leader Signal</span>
+                      <span className={`font-mono font-bold ${result.metrics.leaderSignal ? 'text-amber-400' : 'text-slate-500'}`}>
+                        {result.metrics.leaderSignal ? 'DIVERGENCE' : 'SYNCED'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Whale Tracker */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Anchor className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" /> {t('Whale Tracker')}
+                    </h4>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Whale Buys</span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        ${formatNumber(result.metrics.whaleBuyVol)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Whale Sells</span>
+                      <span className="font-mono font-bold text-rose-400">
+                        ${formatNumber(result.metrics.whaleSellVol)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Orderbook Imbalance */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Scale className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" /> {t('Orderbook')}
+                    </h4>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Imbalance</span>
+                      <span className={`font-mono font-bold ${result.metrics.orderbookImbalance > 0.2 ? 'text-emerald-400' : result.metrics.orderbookImbalance < -0.2 ? 'text-rose-400' : 'text-slate-300'}`}>
+                        {(result.metrics.orderbookImbalance * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2 flex overflow-hidden">
+                      <div className="bg-emerald-500 h-full" style={{ width: `${(result.metrics.orderbookImbalance + 1) / 2 * 100}%` }}></div>
+                      <div className="bg-rose-500 h-full flex-1"></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Support & Resistance */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Crosshair className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" /> {t('Levels & ATR')}
+                    </h4>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Res / Sup</span>
+                      <span className="font-mono font-bold text-slate-300 text-[10px]">
+                        {formatPrice(result.metrics.resistance)} / {formatPrice(result.metrics.support)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">ATR (Volatility)</span>
+                      <span className="font-mono font-bold text-amber-400">
+                        {formatPrice(result.metrics.atr)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Top 5 Institutional Metrics Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                
+                {/* 1. Open Interest */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" /> 1. {t('Open Interest')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">{result.scoreDetails.oi}/3 pts</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Growth (5m)</span>
+                      <span className={`font-mono font-bold ${result.metrics.oiGrowth >= 2 ? 'text-emerald-400' : result.metrics.oiGrowth < 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                        {result.metrics.oiGrowth > 0 ? '+' : ''}{result.metrics.oiGrowth.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Value</span>
+                      <span className="font-mono font-bold text-slate-300">
+                        ${formatNumber(result.metrics.openInterestValue)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Funding Rate */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <BarChart2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" /> 2. {t('Funding Rate')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">{result.scoreDetails.funding}/2 pts</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Rate</span>
+                      <span className={`font-mono font-bold ${Math.abs(result.metrics.fundingRate) < 0.005 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {(result.metrics.fundingRate * 100).toFixed(4)}%
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {Math.abs(result.metrics.fundingRate) > 0.01 ? t('Extreme (Reversal risk)') : t('Neutral/Healthy')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Order Flow & Delta */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <ActivitySquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400" /> 3. {t('Order Flow')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">{result.scoreDetails.delta + result.scoreDetails.orderflow}/4 pts</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Delta</span>
+                      <span className={`font-mono font-bold ${result.metrics.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {result.metrics.delta > 0 ? '+' : ''}{formatNumber(result.metrics.delta)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Trades / Min</span>
+                      <span className={`font-mono font-bold ${result.metrics.tradesPerMin >= 150 ? 'text-emerald-400' : 'text-slate-300'}`}>
+                        {result.metrics.tradesPerMin}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Liquidations */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" /> 4. {t('Liquidations')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">{result.scoreDetails.liquidations}/2 pts</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Recent Liq Vol</span>
+                      <span className={`font-mono font-bold ${result.metrics.liquidations > 10000 ? 'text-amber-400' : 'text-slate-300'}`}>
+                        ${formatNumber(result.metrics.liquidations)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {result.metrics.liquidations > 100000 ? t('Massive Liquidations') : result.metrics.liquidations > 0 ? t('Liquidations Detected') : t('No recent liquidations')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Volume & Liquidity */}
+                <div className="bg-[#1a202c] p-3 sm:p-4 rounded-xl border border-white/5 md:col-span-2 lg:col-span-2">
+                  <div className="flex justify-between items-start mb-2 sm:mb-3">
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Waves className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" /> 5. {t('Liquidity')}
+                    </h4>
+                    <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-slate-400">Base</span>
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Turnover 24h</span>
+                      <span className={`font-mono font-bold ${result.metrics.turnover >= 50000000 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        ${formatNumber(result.metrics.turnover)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] sm:text-sm">
+                      <span className="text-slate-400">Volume Spike</span>
+                      <span className={`font-mono font-bold ${result.metrics.volumeSpike ? 'text-emerald-400' : 'text-slate-300'}`}>
+                        {result.metrics.volumeSpike ? t('YES') : t('NO')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
               </div>
 
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 sm:py-20">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 mb-4 sm:mb-6 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400">
-                <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10" />
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-white mb-2 text-center">{t('Analysis Unavailable')}</h3>
-              <p className="text-slate-400 text-xs sm:text-sm mb-6 text-center max-w-md px-4">
-                {t('Not enough data to generate a reliable signal for')} {ticker.symbol}. {t('Please try again later or select another pair.')}
-              </p>
-              <button 
-                onClick={onClose}
-                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors text-sm"
-              >
-                {t('Go Back')}
-              </button>
-            </div>
-          )}
+          ) : null}
         </div>
-        
-        {/* Footer */}
-        {signal && (
-          <div className="p-3 sm:p-4 border-t border-white/5 bg-[#1a202c] flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0">
-            <p className="text-[10px] sm:text-xs text-slate-500 flex items-center gap-1 text-center sm:text-left">
-              <AlertTriangle className="w-3 h-3 shrink-0" /> {t('Not financial advice. Trade at your own risk.')}
-            </p>
-            <button 
-              onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors text-xs sm:text-sm"
-            >
-              {t('Close Analysis')}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Kline, TradingSignal } from '../types';
 import { formatPrice } from '../utils';
-import { X, TrendingUp, TrendingDown, Crosshair, ShieldAlert, Target, Activity } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Crosshair, ShieldAlert, Target, Activity, BrainCircuit } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface SignalPanelProps {
@@ -75,13 +75,46 @@ export const SignalPanel: React.FC<SignalPanelProps> = ({ symbol, signal, klines
             </div>
 
             {/* Action Button */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-4">
+              {signal.winRate > 0 && (
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-blue-400">
+                      <BrainCircuit className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-wider">AI Signal Accuracy</span>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-lg font-black block ${signal.winRate >= 0.6 ? 'text-emerald-400' : signal.winRate >= 0.4 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {(signal.winRate * 100).toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {signal.wins} Wins / {signal.losses} Losses
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-rose-500/30 rounded-full h-2 overflow-hidden flex">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all duration-1000"
+                      style={{ width: `${signal.winRate * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between mt-1 text-[10px] font-bold">
+                    <span className="text-emerald-400">PROFITABLE</span>
+                    <span className="text-rose-400">LOSING</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 mt-2 leading-tight italic">
+                    Self-learning RL agent is optimizing indicator weights for {symbol}...
+                  </p>
+                </div>
+              )}
+
               <button 
                 onClick={onAnalyze}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                className="relative overflow-hidden w-full py-3 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/30 text-amber-400 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 group"
               >
-                <Activity className="w-4 h-4" />
-                {t('Open Full Pro Analysis')}
+                <Activity className="w-4 h-4 relative z-10" />
+                <span className="relative z-10">{t('Pro Analysis')}</span>
+                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent animate-glare z-0"></div>
               </button>
             </div>
           </div>

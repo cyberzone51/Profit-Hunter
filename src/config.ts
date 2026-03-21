@@ -1,1 +1,2 @@
-export const API_URL = '';
+export const API_URL = process.env.APP_URL || (typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'https://ais-dev-4utfza4jbx2dlatcr62r64-157497256116.europe-west2.run.app');
+console.log('API_URL resolved to:', API_URL, 'process.env.APP_URL:', process.env.APP_URL, 'window.location.origin:', typeof window !== 'undefined' ? window.location.origin : 'undefined');

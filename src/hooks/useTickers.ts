@@ -3,7 +3,9 @@ import { BybitTicker } from '../types';
 
 import { API_URL } from '../config';
 
-export const useBybitTickers = () => {
+import { Exchange } from '../types';
+
+export const useTickers = (exchange: Exchange = 'Bybit') => {
   const [tickers, setTickers] = useState<BybitTicker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export const useBybitTickers = () => {
       if (baseUrl.endsWith('/')) {
         baseUrl = baseUrl.slice(0, -1);
       }
-      const targetUrl = `${baseUrl}/api/tickers`;
+      const targetUrl = `${baseUrl}/api/tickers?exchange=${exchange}`;
       
       console.log(`[Tickers] Fetching from: ${targetUrl}`);
       
