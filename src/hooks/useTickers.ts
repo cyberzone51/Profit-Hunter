@@ -299,6 +299,7 @@ const getWsPatchSymbol = (exchange: Exchange, rawSymbol: string) => {
 
 export const useTickers = (selectedExchange: Exchange = 'Bybit') => {
   const [tickers, setTickers] = useState<BybitTicker[]>([]);
+  const [priceHistory, setPriceHistory] = useState<PriceHistory>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -323,6 +324,7 @@ export const useTickers = (selectedExchange: Exchange = 'Bybit') => {
     }
 
     setTickers(nextTickers);
+    setPriceHistory(historyRef.current);
     setLastUpdated(new Date(now));
   }, []);
 
@@ -391,6 +393,7 @@ export const useTickers = (selectedExchange: Exchange = 'Bybit') => {
     try {
       if (Object.keys(historyRef.current).length === 0) {
         historyRef.current = loadHistory();
+        setPriceHistory(historyRef.current);
       }
 
       let baseUrl = API_URL;
@@ -1054,5 +1057,5 @@ export const useTickers = (selectedExchange: Exchange = 'Bybit') => {
     [tickers, selectedExchange]
   );
 
-  return { tickers, selectedExchangeTickers, loading, error, lastUpdated };
+  return { tickers, selectedExchangeTickers, priceHistory, loading, error, lastUpdated };
 };

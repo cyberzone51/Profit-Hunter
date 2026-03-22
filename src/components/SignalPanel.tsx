@@ -76,12 +76,12 @@ export const SignalPanel: React.FC<SignalPanelProps> = ({ symbol, signal, klines
 
             {/* Action Button */}
             <div className="pt-2 space-y-4">
-              {signal.winRate > 0 && (
+              {signal.sampleSize && signal.sampleSize > 0 ? (
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 text-blue-400">
                       <BrainCircuit className="w-4 h-4" />
-                      <span className="text-xs font-bold uppercase tracking-wider">AI Signal Accuracy</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Historical Signal Accuracy</span>
                     </div>
                     <div className="text-right">
                       <span className={`text-lg font-black block ${signal.winRate >= 0.6 ? 'text-emerald-400' : signal.winRate >= 0.4 ? 'text-amber-400' : 'text-rose-400'}`}>
@@ -103,10 +103,10 @@ export const SignalPanel: React.FC<SignalPanelProps> = ({ symbol, signal, klines
                     <span className="text-rose-400">LOSING</span>
                   </div>
                   <p className="text-[9px] text-slate-500 mt-2 leading-tight italic">
-                    Self-learning RL agent is optimizing indicator weights for {symbol}...
+                    Based on {signal.sampleSize} historical setups with confirmed entry and TP/SL resolution.
                   </p>
                 </div>
-              )}
+              ) : null}
 
               <button 
                 onClick={onAnalyze}

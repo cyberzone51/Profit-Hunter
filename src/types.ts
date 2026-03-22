@@ -70,6 +70,8 @@ export interface TradingSignal {
   winRate: number;
   wins?: number;
   losses?: number;
+  sampleSize?: number;
+  unresolved?: number;
   indicators: {
     ema20: number;
     ema50: number;

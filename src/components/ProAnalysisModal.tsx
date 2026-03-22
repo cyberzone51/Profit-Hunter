@@ -141,6 +141,9 @@ export const ProAnalysisModal: React.FC<ProAnalysisModalProps> = ({ ticker, onCl
                       <div className={`text-lg sm:text-xl font-black ${result.winRate >= 0.6 ? 'text-emerald-400' : result.winRate >= 0.4 ? 'text-amber-400' : 'text-rose-400'}`}>
                         {result.winRate > 0 ? (result.winRate * 100).toFixed(1) + '%' : '-'}
                       </div>
+                      <div className="text-[9px] text-slate-500">
+                        {result.sampleSize > 0 ? `${result.wins}W / ${result.losses}L` : t('No confirmed samples yet')}
+                      </div>
                     </div>
                     <div className="w-px h-6 sm:h-8 bg-white/10"></div>
                     <div className="text-center">

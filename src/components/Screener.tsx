@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTickers } from '../hooks/useTickers';
 import { useCoinSignal } from '../hooks/useCoinSignal';
 import { BybitTicker, SortField, SortDirection, Exchange } from '../types';
-import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType, getTradeSetup } from '../utils';
+import { formatPrice, formatVolume, formatPercent, calc1hChange, getSignalType, getStrongSignalCandidate } from '../utils';
 import { ArrowDown, ArrowUp, ArrowUpDown, Search, Activity, Clock, Zap, LayoutGrid, List, TrendingUp, TrendingDown, Target, Shield, Sparkles, X, Globe, CircleDollarSign, Send, Twitter, BrainCircuit, ChevronDown } from 'lucide-react';
 
 const EXCHANGE_TIERS: Record<string, { label: string; exchanges: Exchange[] }> = {
@@ -22,10 +22,8 @@ const EXCHANGE_TIERS: Record<string, { label: string; exchanges: Exchange[] }> =
 };
 import { TermsModal } from './TermsModal';
 import { API_URL } from '../config';
+import { rlOptimizer } from '../utils/rl';
 
-const TradingViewChart = React.lazy(() =>
-  import('react-ts-tradingview-widgets').then((module) => ({ default: module.AdvancedRealTimeChart }))
-);
 const SignalPanel = React.lazy(() =>
   import('./SignalPanel').then((module) => ({ default: module.SignalPanel }))
 );
@@ -43,18 +41,51 @@ type SignalStats = {
 
 type TrackedSignal = {
   type: string;
+  setupName: string;
   tp: number;
   sl: number;
   entry: number;
-  status: 'active' | 'won' | 'lost';
+  entryMode: 'market' | 'stop';
+  triggered: boolean;
+  status: 'pending' | 'active' | 'won' | 'lost';
 };
 
 const SIGNAL_FILTER_TYPES = ['LONG_REV', 'SHORT_REV', 'LONG_TREND', 'SHORT_TREND'];
 const FREE_SIGNALS_LIMIT = 10;
 const PREMIUM_SIGNALS_STORAGE_KEY = 'profit_hunter_signals_premium';
+const SIGNAL_STATS_STORAGE_KEY = 'profit_hunter_signal_stats_v3';
+const GLOBAL_SIGNAL_LEARNING_KEY = '__global__';
+
+const getSignalLiquidityRank = (ticker: BybitTicker) => {
+  const realMoneyVolume = Number(ticker.turnover24h || 0);
+  const tradeVolume = Number(ticker.volume24h || 0);
+  const participantValue = Number(ticker.openInterestValue || 0);
+  const participantCount = Number(ticker.openInterest || 0);
+
+  return {
+    realMoneyVolume,
+    tradeVolume,
+    participantValue,
+    participantCount
+  };
+};
 
 const getTickerMarketKey = (ticker: Pick<BybitTicker, 'symbol' | 'exchange'>) =>
   `${ticker.exchange || 'Bybit'}:${ticker.symbol}`;
+
+const recordSignalLearning = (marketKey: string, trackedSignal: Pick<TrackedSignal, 'type' | 'entryMode' | 'setupName'>, success: boolean) => {
+  const learningKeys = [
+    'overall',
+    `setup:${trackedSignal.setupName.toLowerCase()}`,
+    `direction:${trackedSignal.type.toLowerCase()}`,
+    `entry:${trackedSignal.entryMode}`
+  ];
+
+  learningKeys.forEach((indicator) => {
+    rlOptimizer.recordResult(marketKey, indicator, success);
+    rlOptimizer.recordResult(GLOBAL_SIGNAL_LEARNING_KEY, indicator, success);
+  });
+};
 
 const EXCHANGE_DOMAINS: Record<Exchange, string> = {
   'Binance': 'binance.com',
@@ -80,115 +111,80 @@ const ExchangeIcon = ({ exchange, className = "w-4 h-4" }: { exchange: Exchange;
 };
 
 const SignalAccuracyBar = ({
-  stats,
-  winRate,
-  t,
-  setStats
+  stats
 }: {
   stats: SignalStats;
-  winRate: number;
-  t: any;
-  setStats: React.Dispatch<React.SetStateAction<SignalStats>>;
 }) => (
-  <div className="w-full lg:w-64 bg-[#1a202c]/50 rounded-lg p-2 border border-white/5">
-    <div className="flex justify-between items-center mb-1.5">
-      <div className="flex items-center gap-1.5">
-        <Target className="w-3 h-3 text-blue-400" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Signal Accuracy')}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <button 
-          onClick={() => {
-            if (confirm(t('Reset signal statistics?'))) {
-              setStats({ wins: 0, losses: 0 });
-            }
-          }}
-          className="p-1 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-slate-300"
-          title={t('Reset Stats')}
-        >
-          <X className="w-2.5 h-2.5" />
-        </button>
-        <span className={`text-[10px] font-black ${winRate >= 70 ? 'text-emerald-400' : winRate >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
-          {winRate}%
-        </span>
-      </div>
-    </div>
-    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden flex">
-      <div 
-        className="h-full bg-emerald-500 transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
-        style={{ width: `${winRate}%` }} 
-      />
-      <div 
-        className="h-full bg-rose-500/50 transition-all duration-500" 
-        style={{ width: `${100 - winRate}%` }} 
-      />
-    </div>
-    <div className="flex justify-between mt-1 text-[8px] font-bold uppercase tracking-tighter">
-      <span className="text-emerald-500/70">{stats.wins} {t('Wins')}</span>
-      <span className="text-rose-500/70">{stats.losses} {t('Losses')}</span>
-    </div>
+  <div className="h-9 sm:h-10 flex items-center gap-2 sm:gap-3 px-2.5 sm:px-3 rounded-lg bg-[#1a202c] border border-white/10 whitespace-nowrap shrink-0">
+    <span className="text-[10px] sm:text-xs font-black text-emerald-400">W:{stats.wins}</span>
+    <span className="text-[10px] sm:text-xs font-black text-rose-400">L:{stats.losses}</span>
   </div>
 );
 
-const LazyChart = React.memo(({ symbol, timeframe, exchange }: { symbol: string; timeframe: string; exchange: Exchange }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+const timeframeToMinutes = (value: string) => {
+  switch (value) {
+    case '1': return 20;
+    case '5': return 45;
+    case '15': return 90;
+    case '60': return 120;
+    case '240': return 120;
+    case 'D': return 120;
+    default: return 60;
+  }
+};
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.01, rootMargin: '200px' }
-    );
+const MiniChart = React.memo(({ points, timeframe }: { points: Array<{ ts: number; price: number }>; timeframe: string }) => {
+  const series = useMemo(() => {
+    const windowMinutes = timeframeToMinutes(timeframe);
+    const now = Date.now();
+    const filtered = points.filter((point) => now - point.ts <= windowMinutes * 60 * 1000);
+    const activePoints = filtered.length >= 2 ? filtered : points.slice(-Math.max(12, Math.min(points.length, 60)));
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    if (activePoints.length < 2) return null;
 
-    return () => observer.disconnect();
-  }, []);
+    const prices = activePoints.map((point) => point.price);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = Math.max(max - min, Math.max(max, 1) * 0.001);
 
-  const getExchangePrefix = (ex: Exchange) => {
-    switch (ex) {
-      case 'Binance': return 'BINANCE';
-      case 'Bybit': return 'BYBIT';
-      case 'OKX': return 'OKX';
-      case 'KuCoin': return 'KUCOIN';
-      case 'MEXC': return 'MEXC';
-      case 'Gate.io': return 'GATEIO';
-      case 'Bitget': return 'BITGET';
-      case 'Kraken': return 'KRAKEN';
-      case 'Deribit': return 'DERIBIT';
-      default: return 'BYBIT';
-    }
-  };
+    const path = activePoints.map((point, index) => {
+      const x = (index / Math.max(activePoints.length - 1, 1)) * 100;
+      const y = 100 - (((point.price - min) / range) * 84 + 8);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+
+    return {
+      path,
+      bullish: activePoints[activePoints.length - 1].price >= activePoints[0].price,
+      latest: activePoints[activePoints.length - 1].price,
+      earliest: activePoints[0].price
+    };
+  }, [points, timeframe]);
 
   return (
-    <div ref={containerRef} className="h-full w-full bg-[#0b0e14] relative overflow-hidden">
-      {isVisible ? (
-        <Suspense fallback={<div className="flex flex-col items-center justify-center h-full w-full gap-2 opacity-10"><Activity className="w-6 h-6 animate-pulse text-slate-500" /></div>}>
-          <TradingViewChart
-            symbol={`${getExchangePrefix(exchange)}:${symbol}.P`}
-            theme="dark"
-            autosize
-            hide_side_toolbar={true}
-            hide_top_toolbar={true}
-            interval={timeframe as any}
-            timezone="Etc/UTC"
-            style="1"
-            locale="en"
-            enable_publishing={false}
-            allow_symbol_change={false}
-            save_image={false}
-          />
-        </Suspense>
+    <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.16),transparent_55%),#0b0e14] relative overflow-hidden">
+      {series ? (
+        <>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+            <path
+              d={series.path}
+              fill="none"
+              stroke={series.bullish ? '#34d399' : '#fb7185'}
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-3 py-2 text-[10px] font-mono">
+            <span className={`${series.bullish ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {series.bullish ? '+' : ''}{(((series.latest - series.earliest) / Math.max(series.earliest, 1)) * 100).toFixed(2)}%
+            </span>
+            <span className="text-slate-500">{points.length} pts</span>
+          </div>
+        </>
       ) : (
-        <div className="flex flex-col items-center justify-center h-full w-full gap-2 opacity-10">
-          <Activity className="w-6 h-6 animate-pulse text-slate-500" />
+        <div className="flex h-full w-full items-center justify-center">
+          <Activity className="w-6 h-6 text-slate-600 animate-pulse" />
         </div>
       )}
     </div>
@@ -198,20 +194,22 @@ const LazyChart = React.memo(({ symbol, timeframe, exchange }: { symbol: string;
 export const Screener: React.FC = () => {
   const { t, i18n } = useTranslation();
   const [selectedExchange, setSelectedExchange] = useState<Exchange>('Bybit');
-  const { tickers, selectedExchangeTickers, loading, error, lastUpdated } = useTickers(selectedExchange);
+  const { tickers, selectedExchangeTickers, priceHistory, loading, error, lastUpdated } = useTickers(selectedExchange);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('turnover24h');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedMarketKey, setSelectedMarketKey] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
   const [timeframe, setTimeframe] = useState<string>('5');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'signals' | 'near_levels' | 'consolidation' | 'new_listings'>('all');
+  const [activeFilter, setActiveFilter] = useState<'signals' | 'near_levels' | 'new_listings'>('signals');
   const [analyzingMarketKey, setAnalyzingMarketKey] = useState<string | null>(null);
   const [showPremiumSignalsModal, setShowPremiumSignalsModal] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(true); // Default to true to prevent flash, then check in effect
   const [showTerms, setShowTerms] = useState(false);
   const [showExchangeMenu, setShowExchangeMenu] = useState(false);
   const exchangeMenuRef = useRef<HTMLDivElement>(null);
+  const latestSignalOrderRef = useRef<string[]>([]);
+  const [stableSignalOrder, setStableSignalOrder] = useState<string[]>([]);
   const [premiumSignalsUnlocked, setPremiumSignalsUnlocked] = useState(() => {
     try {
       const raw = localStorage.getItem(PREMIUM_SIGNALS_STORAGE_KEY);
@@ -226,7 +224,7 @@ export const Screener: React.FC = () => {
   // Signal Accuracy Tracking
   const [stats, setStats] = useState<SignalStats>(() => {
     try {
-      const saved = localStorage.getItem('profit_hunter_signal_stats');
+      const saved = localStorage.getItem(SIGNAL_STATS_STORAGE_KEY);
       return saved ? JSON.parse(saved) : { wins: 0, losses: 0 };
     } catch (e) {
       return { wins: 0, losses: 0 };
@@ -236,7 +234,7 @@ export const Screener: React.FC = () => {
   const trackedSignalsRef = useRef<Record<string, TrackedSignal>>({});
 
   useEffect(() => {
-    localStorage.setItem('profit_hunter_signal_stats', JSON.stringify(stats));
+    localStorage.setItem(SIGNAL_STATS_STORAGE_KEY, JSON.stringify(stats));
   }, [stats]);
 
   useEffect(() => {
@@ -259,12 +257,12 @@ export const Screener: React.FC = () => {
     if (tickers.length === 0) return;
 
     tickers.forEach(ticker => {
-      const setup = getTradeSetup(ticker);
+      const setup = getStrongSignalCandidate(ticker);
       const symbol = getTickerMarketKey(ticker);
       const currentPrice = Number(ticker.lastPrice);
       const existing = trackedSignalsRef.current[symbol];
 
-      // If no signal from getTradeSetup, clear the completed status to allow new signals for this symbol later
+      // If no high-quality signal remains, clear the completed status to allow a new signal later
       if (!setup) {
         if (existing && existing.status !== 'active') {
           delete trackedSignalsRef.current[symbol];
@@ -274,45 +272,66 @@ export const Screener: React.FC = () => {
 
       // If we have a setup and aren't tracking anything for this symbol yet
       if (!existing) {
+        const triggered = setup.entryMode === 'market'
+          || (setup.type === 'LONG' ? currentPrice >= setup.entry : currentPrice <= setup.entry);
+
         trackedSignalsRef.current[symbol] = {
           type: setup.type,
+          setupName: setup.setupName,
           tp: setup.tp,
           sl: setup.sl,
           entry: setup.entry,
-          status: 'active'
+          entryMode: setup.entryMode,
+          triggered,
+          status: triggered ? 'active' : 'pending'
         };
-      } 
-      // If we are tracking an active signal, check for TP/SL hits
-      else if (existing.status === 'active') {
-        if (existing.type === 'LONG') {
-          if (currentPrice >= existing.tp) {
-            setStats(prev => ({ ...prev, wins: prev.wins + 1 }));
-            existing.status = 'won';
-          } else if (currentPrice <= existing.sl) {
-            setStats(prev => ({ ...prev, losses: prev.losses + 1 }));
-            existing.status = 'lost';
-          }
-        } else if (existing.type === 'SHORT') {
-          if (currentPrice <= existing.tp) {
-            setStats(prev => ({ ...prev, wins: prev.wins + 1 }));
-            existing.status = 'won';
-          } else if (currentPrice >= existing.sl) {
-            setStats(prev => ({ ...prev, losses: prev.losses + 1 }));
-            existing.status = 'lost';
-          }
+      } else if (!existing.triggered) {
+        existing.type = setup.type;
+        existing.setupName = setup.setupName;
+        existing.tp = setup.tp;
+        existing.sl = setup.sl;
+        existing.entry = setup.entry;
+        existing.entryMode = setup.entryMode;
+
+        const longTriggered = existing.type === 'LONG'
+          ? currentPrice >= existing.entry
+          : currentPrice <= existing.entry;
+
+        if (longTriggered) {
+          existing.triggered = true;
+          existing.status = 'active';
         }
       }
-      // If status is 'won' or 'lost', we do nothing. 
-      // The signal will stay in this state until getTradeSetup(ticker) returns null,
-      // which will then trigger the deletion (reset) in the first 'if (!setup)' block.
+
+      const tracked = trackedSignalsRef.current[symbol];
+      if (!tracked || tracked.status !== 'active') {
+        return;
+      }
+
+      if (tracked.type === 'LONG') {
+        if (currentPrice >= tracked.tp) {
+          setStats(prev => ({ ...prev, wins: prev.wins + 1 }));
+          recordSignalLearning(symbol, tracked, true);
+          tracked.status = 'won';
+        } else if (currentPrice <= tracked.sl) {
+          setStats(prev => ({ ...prev, losses: prev.losses + 1 }));
+          recordSignalLearning(symbol, tracked, false);
+          tracked.status = 'lost';
+        }
+      } else if (tracked.type === 'SHORT') {
+        if (currentPrice <= tracked.tp) {
+          setStats(prev => ({ ...prev, wins: prev.wins + 1 }));
+          recordSignalLearning(symbol, tracked, true);
+          tracked.status = 'won';
+        } else if (currentPrice >= tracked.sl) {
+          setStats(prev => ({ ...prev, losses: prev.losses + 1 }));
+          recordSignalLearning(symbol, tracked, false);
+          tracked.status = 'lost';
+        }
+      }
     });
   }, [tickers]);
 
-  const winRate = useMemo(() => {
-    const total = stats.wins + stats.losses;
-    return total === 0 ? 0 : Math.round((stats.wins / total) * 100);
-  }, [stats]);
-  
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (exchangeMenuRef.current && !exchangeMenuRef.current.contains(event.target as Node)) {
@@ -382,33 +401,65 @@ export const Screener: React.FC = () => {
       t.symbol.toLowerCase().includes(search.toLowerCase())
     );
 
-    if (activeFilter !== 'all') {
-      result = result.filter((t) => {
-        const signal = getSignalType(t);
-        if (activeFilter === 'signals') {
-          return SIGNAL_FILTER_TYPES.includes(signal);
-        }
-        if (activeFilter === 'consolidation') {
-          return signal === 'CONS';
-        }
-        if (activeFilter === 'near_levels') {
-          const high24h = Number(t.highPrice24h);
-          const low24h = Number(t.lowPrice24h);
-          const toRes = ((high24h - Number(t.lastPrice)) / Number(t.lastPrice)) * 100;
-          const toSup = ((Number(t.lastPrice) - low24h) / Number(t.lastPrice)) * 100;
-          return toRes < 1.5 || toSup < 1.5;
-        }
-        if (activeFilter === 'new_listings') {
-          const launchTime = Number(t.launchTime || 0);
-          // If launchTime is in seconds (less than 10^10), convert to ms
-          const launchTimeMs = launchTime > 0 && launchTime < 10000000000 ? launchTime * 1000 : launchTime;
-          return launchTimeMs > 0 && (Date.now() - launchTimeMs) <= 2592000000;
-        }
-        return true;
-      });
-    }
+    result = result.filter((t) => {
+      const signal = getSignalType(t);
+      if (activeFilter === 'signals') {
+        const strongSignal = getStrongSignalCandidate(t);
+        return Boolean(strongSignal && SIGNAL_FILTER_TYPES.includes(strongSignal.signalType));
+      }
+      if (activeFilter === 'near_levels') {
+        const high24h = Number(t.highPrice24h);
+        const low24h = Number(t.lowPrice24h);
+        const toRes = ((high24h - Number(t.lastPrice)) / Number(t.lastPrice)) * 100;
+        const toSup = ((Number(t.lastPrice) - low24h) / Number(t.lastPrice)) * 100;
+        return toRes < 1.5 || toSup < 1.5;
+      }
+      if (activeFilter === 'new_listings') {
+        const launchTime = Number(t.launchTime || 0);
+        const launchTimeMs = launchTime > 0 && launchTime < 10000000000 ? launchTime * 1000 : launchTime;
+        return launchTimeMs > 0 && (Date.now() - launchTimeMs) <= 2592000000;
+      }
+      return false;
+    });
 
     result.sort((a, b) => {
+      if (activeFilter === 'signals') {
+        const leftSignal = getStrongSignalCandidate(a);
+        const rightSignal = getStrongSignalCandidate(b);
+        const left = getSignalLiquidityRank(a);
+        const right = getSignalLiquidityRank(b);
+
+        if ((rightSignal?.qualityScore || 0) !== (leftSignal?.qualityScore || 0)) {
+          return (rightSignal?.qualityScore || 0) - (leftSignal?.qualityScore || 0);
+        }
+
+        if ((rightSignal?.learningScore || 0) !== (leftSignal?.learningScore || 0)) {
+          return (rightSignal?.learningScore || 0) - (leftSignal?.learningScore || 0);
+        }
+
+        if ((rightSignal?.winRate || 0) !== (leftSignal?.winRate || 0)) {
+          return (rightSignal?.winRate || 0) - (leftSignal?.winRate || 0);
+        }
+
+        if (right.realMoneyVolume !== left.realMoneyVolume) {
+          return right.realMoneyVolume - left.realMoneyVolume;
+        }
+
+        if (right.tradeVolume !== left.tradeVolume) {
+          return right.tradeVolume - left.tradeVolume;
+        }
+
+        if (right.participantValue !== left.participantValue) {
+          return right.participantValue - left.participantValue;
+        }
+
+        if (right.participantCount !== left.participantCount) {
+          return right.participantCount - left.participantCount;
+        }
+
+        return a.symbol.localeCompare(b.symbol);
+      }
+
       let valA: number;
       let valB: number;
 
@@ -469,13 +520,48 @@ export const Screener: React.FC = () => {
     return Math.max(filteredAndSortedTickers.length - FREE_SIGNALS_LIMIT, 0);
   }, [activeFilter, filteredAndSortedTickers.length, premiumSignalsUnlocked]);
 
-  const displayedTickers = useMemo(() => {
-    if (activeFilter !== 'signals' || premiumSignalsUnlocked) {
-      return filteredAndSortedTickers;
+  useEffect(() => {
+    if (activeFilter !== 'signals') {
+      latestSignalOrderRef.current = [];
+      setStableSignalOrder([]);
+      return;
     }
 
-    return filteredAndSortedTickers.slice(0, FREE_SIGNALS_LIMIT);
-  }, [activeFilter, filteredAndSortedTickers, premiumSignalsUnlocked]);
+    latestSignalOrderRef.current = filteredAndSortedTickers.map((ticker) => getTickerMarketKey(ticker));
+
+    if (stableSignalOrder.length === 0) {
+      setStableSignalOrder(latestSignalOrderRef.current);
+    }
+  }, [activeFilter, filteredAndSortedTickers, stableSignalOrder.length]);
+
+  useEffect(() => {
+    if (activeFilter !== 'signals') return;
+
+    const intervalId = window.setInterval(() => {
+      setStableSignalOrder(latestSignalOrderRef.current);
+    }, 12000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeFilter]);
+
+  const displayedTickers = useMemo(() => {
+    let orderedTickers = filteredAndSortedTickers;
+
+    if (activeFilter === 'signals' && stableSignalOrder.length > 0) {
+      const ranked = new Map(filteredAndSortedTickers.map((ticker) => [getTickerMarketKey(ticker), ticker]));
+      const stable = stableSignalOrder
+        .map((marketKey) => ranked.get(marketKey))
+        .filter(Boolean) as BybitTicker[];
+      const appended = filteredAndSortedTickers.filter((ticker) => !stableSignalOrder.includes(getTickerMarketKey(ticker)));
+      orderedTickers = [...stable, ...appended];
+    }
+
+    if (activeFilter !== 'signals' || premiumSignalsUnlocked) {
+      return orderedTickers;
+    }
+
+    return orderedTickers.slice(0, FREE_SIGNALS_LIMIT);
+  }, [activeFilter, filteredAndSortedTickers, premiumSignalsUnlocked, stableSignalOrder]);
 
   const getColorClass = (val: number) => {
     if (val > 0) return 'text-emerald-400';
@@ -627,7 +713,7 @@ export const Screener: React.FC = () => {
               </div>
             </div>
 
-            {/* Desktop Search Bar & Accuracy */}
+            {/* Desktop Search Bar */}
             <div className="hidden lg:flex flex-col gap-2 items-end ml-6">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -636,10 +722,9 @@ export const Screener: React.FC = () => {
                   placeholder={t('Search coins...')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 pr-4 py-1.5 bg-[#1a202c] border border-white/10 rounded-md text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all w-64 placeholder:text-slate-600"
+                  className="w-64 h-9 sm:h-10 pl-9 pr-4 bg-[#1a202c] border border-white/10 rounded-md text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all placeholder:text-slate-600"
                 />
               </div>
-              <SignalAccuracyBar stats={stats} winRate={winRate} t={t} setStats={setStats} />
             </div>
           </div>
 
@@ -648,7 +733,7 @@ export const Screener: React.FC = () => {
             <div className="relative" ref={exchangeMenuRef}>
               <button
                 onClick={() => setShowExchangeMenu(!showExchangeMenu)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-[#1a202c] border border-white/10 rounded-lg text-[10px] sm:text-xs font-bold text-slate-300 hover:text-white hover:border-white/20 transition-all"
+                className="h-9 sm:h-10 flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 bg-[#1a202c] border border-white/10 rounded-lg text-[10px] sm:text-xs font-bold text-slate-300 hover:text-white hover:border-white/20 transition-all"
               >
                 <ExchangeIcon exchange={selectedExchange} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>{selectedExchange}</span>
@@ -692,13 +777,24 @@ export const Screener: React.FC = () => {
               )}
             </div>
 
+            <div className="relative min-w-[132px] flex-1 lg:hidden">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder={t('Search coins...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-9 sm:h-10 pl-9 pr-3 bg-[#1a202c] border border-white/10 rounded-lg text-xs focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-600"
+              />
+            </div>
+
             {viewMode === 'grid' && (
-              <div className="flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10 text-[9px] sm:text-xs font-medium overflow-x-auto no-scrollbar">
+              <div className="hidden lg:flex h-9 sm:h-10 items-center bg-[#1a202c] rounded-lg p-1 border border-white/10 text-[9px] sm:text-xs font-medium overflow-x-auto no-scrollbar">
                 {timeframes.map((tf) => (
                   <button
                     key={tf.value}
                     onClick={() => setTimeframe(tf.value)}
-                    className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap ${
+                    className={`h-7 sm:h-8 px-2 rounded-md transition-colors whitespace-nowrap ${
                       timeframe === tf.value
                         ? 'bg-blue-500/20 text-blue-400'
                         : 'text-slate-500 hover:text-slate-300'
@@ -710,18 +806,22 @@ export const Screener: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-2 ml-auto lg:ml-0">
-              <div className="flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
+            <div className="hidden lg:flex">
+              <SignalAccuracyBar stats={stats} />
+            </div>
+
+            <div className="hidden lg:flex items-center gap-2 ml-auto lg:ml-0">
+              <div className="h-9 sm:h-10 flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`h-7 sm:h-8 w-7 sm:w-8 flex items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
                   title="Grid View (Charts)"
                 >
                   <LayoutGrid className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('table')}
-                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`h-7 sm:h-8 w-7 sm:w-8 flex items-center justify-center rounded-md transition-colors ${viewMode === 'table' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
                   title="Table View"
                 >
                   <List className="w-4 h-4" />
@@ -729,28 +829,55 @@ export const Screener: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 w-full lg:w-auto mt-2 lg:mt-0">
-              <div className="flex items-center gap-2 w-full lg:w-auto">
-                {/* Mobile Search Bar */}
-                <div className="lg:hidden relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder={t('Search coins...')}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-1.5 bg-[#1a202c] border border-white/10 rounded-lg text-xs focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-600"
-                  />
+            <div className="flex lg:hidden items-center gap-2 w-full overflow-x-auto no-scrollbar">
+              {viewMode === 'grid' && (
+                <div className="h-9 flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10 text-[9px] font-medium whitespace-nowrap shrink-0">
+                  {timeframes.map((tf) => (
+                    <button
+                      key={`mobile-${tf.value}`}
+                      onClick={() => setTimeframe(tf.value)}
+                      className={`h-7 px-2 rounded-md transition-colors whitespace-nowrap ${
+                        timeframe === tf.value
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {tf.label}
+                    </button>
+                  ))}
                 </div>
+              )}
 
+              <SignalAccuracyBar stats={stats} />
+
+              <div className="h-9 flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10 shrink-0">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  title="Grid View (Charts)"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors ${viewMode === 'table' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  title="Table View"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="hidden lg:flex flex-col gap-2 w-full lg:w-auto mt-2 lg:mt-0">
+              <div className="flex items-center gap-2 w-full lg:w-auto">
                 {/* Desktop Language Selector */}
-                <div className="hidden lg:flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
+                <div className="h-9 sm:h-10 flex items-center bg-[#1a202c] rounded-lg p-1 border border-white/10">
                   <div className="relative flex items-center">
                     <Globe className="w-3.5 h-3.5 text-slate-500 ml-2" />
                     <select
                       value={i18n.language}
                       onChange={(e) => i18n.changeLanguage(e.target.value)}
-                      className="bg-transparent text-slate-300 text-[10px] sm:text-xs font-medium py-1 pl-1.5 pr-5 appearance-none focus:outline-none cursor-pointer"
+                      className="h-7 sm:h-8 bg-transparent text-slate-300 text-[10px] sm:text-xs font-medium pl-1.5 pr-5 appearance-none focus:outline-none cursor-pointer"
                     >
                       {languages.map((lang) => (
                         <option key={lang.code} value={lang.code} className="bg-[#1a202c]">
@@ -762,10 +889,6 @@ export const Screener: React.FC = () => {
                 </div>
               </div>
 
-              {/* Mobile Signal Accuracy Bar */}
-              <div className="lg:hidden">
-                <SignalAccuracyBar stats={stats} winRate={winRate} t={t} setStats={setStats} />
-              </div>
             </div>
 
           </div>
@@ -774,12 +897,6 @@ export const Screener: React.FC = () => {
         {/* Filter Bar */}
         <div className="flex items-center gap-2 px-3 sm:px-6 py-2 bg-[#0b0e14] border-b border-white/5 overflow-x-auto no-scrollbar shrink-0">
           <span className="text-[9px] sm:text-xs text-slate-500 font-bold uppercase tracking-tighter mr-1 shrink-0">{t('Filters')}</span>
-          <button 
-            onClick={() => setActiveFilter('all')}
-            className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-colors whitespace-nowrap ${activeFilter === 'all' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-[#1a202c] text-slate-400 border border-white/5 hover:bg-white/5'}`}
-          >
-            {t('All')}
-          </button>
           <button 
             onClick={() => setActiveFilter('signals')}
             className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-colors whitespace-nowrap ${activeFilter === 'signals' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-[#1a202c] text-slate-400 border border-white/5 hover:bg-white/5'}`}
@@ -791,12 +908,6 @@ export const Screener: React.FC = () => {
             className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-colors whitespace-nowrap ${activeFilter === 'near_levels' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-[#1a202c] text-slate-400 border border-white/5 hover:bg-white/5'}`}
           >
             🎯 {t('Near Levels')} (&lt;1.5%)
-          </button>
-          <button 
-            onClick={() => setActiveFilter('consolidation')}
-            className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-medium transition-colors whitespace-nowrap ${activeFilter === 'consolidation' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-[#1a202c] text-slate-400 border border-white/5 hover:bg-white/5'}`}
-          >
-            📉 {t('Consolidation')}
           </button>
           <button 
             onClick={() => setActiveFilter('new_listings')}
@@ -833,7 +944,7 @@ export const Screener: React.FC = () => {
               <Search className="w-12 h-12 mb-4 opacity-20" />
               <p>{
                 activeFilter === 'new_listings' ? t('No new listings in the last 30 days') : 
-                activeFilter === 'signals' ? t('No active signals right now (market is calm)') : 
+                activeFilter === 'signals' ? `${selectedExchange}: ${t('no high-quality signals right now')}` : 
                 t('No coins found')
               }</p>
             </div>
@@ -854,7 +965,7 @@ export const Screener: React.FC = () => {
                     }`}
                   >
                     <div className="h-64 sm:h-80 w-full border-b border-white/5 bg-[#0b0e14]">
-                      <LazyChart key={`${marketKey}-${timeframe}`} symbol={ticker.symbol} timeframe={timeframe} exchange={ticker.exchange || 'Bybit'} />
+                      <MiniChart points={priceHistory[marketKey] || []} timeframe={timeframe} />
                     </div>
                     <div 
                       className="p-3 sm:p-4 flex flex-col gap-3 sm:gap-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
@@ -919,7 +1030,7 @@ export const Screener: React.FC = () => {
 
                       {/* Trade Setup Display */}
                       {activeFilter === 'signals' && (() => {
-                        const setup = getTradeSetup(ticker);
+                        const setup = getStrongSignalCandidate(ticker);
                         if (!setup) return null;
                         return (
                           <div className="mt-3 p-2.5 bg-[#0b0e14] rounded-lg border border-white/5">
@@ -1118,7 +1229,7 @@ export const Screener: React.FC = () => {
                       </td>
                       <td className="px-4 sm:px-6 py-3 sm:py-4 text-right font-mono">
                         {(() => {
-                          const setup = getTradeSetup(ticker);
+                          const setup = getStrongSignalCandidate(ticker);
                           if (!setup || !setup.winRate || setup.winRate === 0) return <span className="text-slate-600">-</span>;
                           return (
                             <div className="flex flex-col items-end gap-0.5">
@@ -1156,7 +1267,7 @@ export const Screener: React.FC = () => {
                           </button>
                           
                           {activeFilter === 'signals' && (() => {
-                            const setup = getTradeSetup(ticker);
+                            const setup = getStrongSignalCandidate(ticker);
                             if (!setup) return null;
                             return (
                               <div className="flex items-center gap-2 text-[10px]">

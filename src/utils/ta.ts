@@ -1,122 +1,87 @@
 import { Kline, TradingSignal, BybitTicker } from '../types';
 import { getSignalType } from '../utils';
 import { rlOptimizer } from './rl';
-import { 
-  calcEMA, calcRSI, calcMACD, calcOBV, calcVWAP, 
-  calcBollingerBands, calcATR, calcADX, calcFibonacci,
-  findSwingHighLow, detectDivergence
+import { createBacktestStats, EMPTY_BACKTEST_STATS, resolveTradeOutcome } from './backtest';
+import {
+  calcEMA,
+  calcRSI,
+  calcMACD,
+  calcOBV,
+  calcVWAP,
+  calcBollingerBands,
+  calcATR,
+  calcADX,
+  calcFibonacci,
+  findSwingHighLow,
+  detectDivergence
 } from './indicators';
 
-/**
- * Backtests the current signal logic on historical data to estimate win rate
- */
-const backtestSignal = (
-  symbol: string,
-  k15m: Kline[],
-  direction: 'LONG' | 'SHORT' | 'NEUTRAL'
-): number => {
-  if (direction === 'NEUTRAL' || k15m.length < 50) return 0.72;
+type SignalDirection = 'LONG' | 'SHORT' | 'NEUTRAL';
 
-  let wins = 0;
-  let total = 0;
-  const lookback = Math.min(30, k15m.length - 20);
-
-  for (let i = k15m.length - lookback; i < k15m.length - 5; i++) {
-    const currentPrice = k15m[i].close;
-    const atr = calcATR(k15m.slice(0, i).map(k => k.high), k15m.slice(0, i).map(k => k.low), k15m.slice(0, i).map(k => k.close), 14).pop() || (currentPrice * 0.01);
-    
-    let sl, tp;
-    if (direction === 'LONG') {
-      sl = currentPrice - atr * 1.5;
-      tp = currentPrice + atr * 2.0;
-    } else {
-      sl = currentPrice + atr * 1.5;
-      tp = currentPrice - atr * 2.0;
-    }
-
-    // Check next 5 candles
-    for (let j = i + 1; j < Math.min(i + 6, k15m.length); j++) {
-      const high = k15m[j].high;
-      const low = k15m[j].low;
-
-      if (direction === 'LONG') {
-        if (high >= tp) { wins++; total++; break; }
-        if (low <= sl) { total++; break; }
-      } else {
-        if (low <= tp) { wins++; total++; break; }
-        if (high >= sl) { total++; break; }
-      }
-    }
-  }
-
-  const winRate = total > 0 ? wins / total : 0.72;
-  // Record result for RL
-  rlOptimizer.recordResult(symbol, 'overall', winRate > 0.5);
-  return winRate;
+type SignalAnalysis = {
+  direction: SignalDirection;
+  finalScore: number;
+  currentPrice: number;
+  takeProfit1: number;
+  takeProfit2: number;
+  stopLoss: number;
+  riskReward: number;
+  indicators: TradingSignal['indicators'];
 };
 
-export const generateSignal = (
-  symbol: string, 
-  k15m: Kline[], 
-  k1h: Kline[], 
-  k4h: Kline[], 
-  btc1h: Kline[], 
+const buildSignalAnalysis = (
+  symbol: string,
+  k15m: Kline[],
+  k1h: Kline[],
+  k4h: Kline[],
+  btc1h: Kline[],
   ticker: BybitTicker | null = null
-): TradingSignal | null => {
+): SignalAnalysis | null => {
   if (k15m.length < 50 || k1h.length < 50 || k4h.length < 50 || btc1h.length < 50) return null;
 
-  // 15m Data
-  const closes = k15m.map(k => k.close);
-  const highs = k15m.map(k => k.high);
-  const lows = k15m.map(k => k.low);
-  const volumes = k15m.map(k => k.volume);
+  const closes = k15m.map((kline) => kline.close);
+  const highs = k15m.map((kline) => kline.high);
+  const lows = k15m.map((kline) => kline.low);
+  const volumes = k15m.map((kline) => kline.volume);
   const currentPrice = closes[closes.length - 1];
 
-  // 1H Data
-  const closes1h = k1h.map(k => k.close);
+  const closes1h = k1h.map((kline) => kline.close);
   const ema50_1h = calcEMA(closes1h, 50).pop() || currentPrice;
   const ema200_1h = calcEMA(closes1h, 200).pop() || currentPrice;
 
-  // BTC 1H Data
-  const btcCloses1h = btc1h.map(k => k.close);
-  const btcEma50_1h = calcEMA(btcCloses1h, 50).pop() || btcCloses1h[btcCloses1h.length - 1];
+  const btcCloses1h = btc1h.map((kline) => kline.close);
   const currentBtcPrice = btcCloses1h[btcCloses1h.length - 1];
+  const btcEma50_1h = calcEMA(btcCloses1h, 50).pop() || currentBtcPrice;
 
-  // 15m Indicators
   const ema20 = calcEMA(closes, 20).pop() || currentPrice;
   const ema50 = calcEMA(closes, 50).pop() || currentPrice;
   const ema200 = calcEMA(closes, 200).pop() || currentPrice;
   const adx = calcADX(highs, lows, closes, 14).pop() || 20;
   const rsiArray = calcRSI(closes, 14);
-  const rsi = rsiArray[rsiArray.length - 1];
+  const rsi = rsiArray[rsiArray.length - 1] || 50;
   const { macdLine, signalLine, histogram } = calcMACD(closes);
-  const macd = { 
-    line: macdLine[macdLine.length - 1] || 0, 
-    signal: signalLine[signalLine.length - 1] || 0, 
-    hist: histogram[histogram.length - 1] || 0 
+  const macd = {
+    line: macdLine[macdLine.length - 1] || 0,
+    signal: signalLine[signalLine.length - 1] || 0,
+    hist: histogram[histogram.length - 1] || 0
   };
+  const previousHistogram = histogram[histogram.length - 2] || 0;
   const obvArray = calcOBV(closes, volumes);
-  const obv = obvArray[obvArray.length - 1];
+  const obv = obvArray[obvArray.length - 1] || 0;
   const prevObv = obvArray[obvArray.length - 2] || obv;
   const vwap = calcVWAP(highs, lows, closes, volumes).pop() || currentPrice;
   const { upper, lower, basis } = calcBollingerBands(closes);
-  const bb = { 
-    upper: upper[upper.length - 1] || currentPrice, 
-    lower: lower[lower.length - 1] || currentPrice, 
-    basis: basis[basis.length - 1] || currentPrice 
+  const bb = {
+    upper: upper[upper.length - 1] || currentPrice,
+    lower: lower[lower.length - 1] || currentPrice,
+    basis: basis[basis.length - 1] || currentPrice
   };
   const atr = calcATR(highs, lows, closes, 14).pop() || (currentPrice * 0.01);
 
-  // Step 1: MTFA (Multi-Timeframe Analysis)
   const mtfaTrend = ema50_1h > ema200_1h ? 'BULLISH' : (ema50_1h < ema200_1h ? 'BEARISH' : 'MIXED');
-  
-  // Step 2: BTC Leader Filter
   const btcTrend = currentBtcPrice > btcEma50_1h ? 'BULLISH' : 'BEARISH';
-
-  // Step 5: Divergence
   const divergence = detectDivergence(closes, rsiArray, 20);
 
-  // Scoring Logic (Optimized by RL)
   let bullScore = 0;
   let bearScore = 0;
 
@@ -129,63 +94,52 @@ export const generateSignal = (
   const wVWAP = rlOptimizer.getWeight(symbol, 'vwap');
   const wDiv = rlOptimizer.getWeight(symbol, 'divergence');
 
-  // Apply MTFA & BTC Filters (Heavy weights)
   if (mtfaTrend === 'BULLISH') bullScore += 20 * wMTFA;
   if (mtfaTrend === 'BEARISH') bearScore += 20 * wMTFA;
   if (btcTrend === 'BULLISH') bullScore += 15 * wBTC;
   if (btcTrend === 'BEARISH') bearScore += 15 * wBTC;
 
-  // Volume Spike Detection
-  const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-  const currentVolume = volumes[volumes.length - 1];
+  const avgVolume = volumes.slice(-20).reduce((sum, volume) => sum + volume, 0) / 20;
+  const currentVolume = volumes[volumes.length - 1] || 0;
   const volumeSpike = currentVolume > avgVolume * 2.5;
 
-  // Step 3: Adaptive Logic (Market Regime)
   if (adx > 25) {
-    // Trending Market: Focus on EMA, MACD, ignore RSI extremes
     if (ema20 > ema50 && ema50 > ema200) bullScore += 20 * wEMA;
     if (ema20 < ema50 && ema50 < ema200) bearScore += 20 * wEMA;
-    
+
     if (macd.line > macd.signal && macd.hist > 0) bullScore += 15 * wMACD;
     if (macd.line < macd.signal && macd.hist < 0) bearScore += 15 * wMACD;
-    
+
     if (currentPrice > vwap) bullScore += 10 * wVWAP;
     if (currentPrice < vwap) bearScore += 10 * wVWAP;
   } else {
-    // Ranging Market: Focus on RSI, Bollinger Bands
-    if (rsi < 35) bullScore += 20 * wRSI; // Oversold bounce
-    if (rsi > 65) bearScore += 20 * wRSI; // Overbought reject
-    
+    if (rsi < 35) bullScore += 20 * wRSI;
+    if (rsi > 65) bearScore += 20 * wRSI;
+
     if (currentPrice < bb.lower) bullScore += 20 * wBB;
     if (currentPrice > bb.upper) bearScore += 20 * wBB;
-    
-    if (macd.hist > 0 && macd.hist > histogram[histogram.length - 2]) bullScore += 10 * wMACD;
-    if (macd.hist < 0 && macd.hist < histogram[histogram.length - 2]) bearScore += 10 * wMACD;
+
+    if (macd.hist > 0 && macd.hist > previousHistogram) bullScore += 10 * wMACD;
+    if (macd.hist < 0 && macd.hist < previousHistogram) bearScore += 10 * wMACD;
   }
 
-  // Volume & Divergence
   if (obv > prevObv && volumeSpike) bullScore += 15;
   if (obv < prevObv && volumeSpike) bearScore += 15;
 
   if (divergence === 'BULLISH') bullScore += 25 * wDiv;
   if (divergence === 'BEARISH') bearScore += 25 * wDiv;
 
-  // Crypto Metrics (Funding & OI)
   if (ticker) {
     const funding = Number(ticker.fundingRate);
     if (funding < -0.0005) bullScore += 10;
     if (funding > 0.0005) bearScore += 10;
-  }
 
-  // Boost score if it aligns with screener
-  if (ticker) {
     const screenerSignal = getSignalType(ticker);
     if (screenerSignal.includes('LONG')) bullScore += 20;
     if (screenerSignal.includes('SHORT')) bearScore += 20;
   }
 
-  // Determine Direction
-  let direction: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL';
+  let direction: SignalDirection = 'NEUTRAL';
   let finalScore = 0;
 
   if (bullScore > bearScore && bullScore >= 65) {
@@ -196,92 +150,159 @@ export const generateSignal = (
     finalScore = Math.min(99, bearScore);
   } else {
     direction = 'NEUTRAL';
-    finalScore = Math.max(bullScore, bearScore); // Just show the highest score for neutral
+    finalScore = Math.max(bullScore, bearScore);
   }
 
-  // Strict Filter: Reduce score if against BTC trend
   if (direction === 'LONG' && btcTrend === 'BEARISH') finalScore = Math.max(0, finalScore - 25);
   if (direction === 'SHORT' && btcTrend === 'BULLISH') finalScore = Math.max(0, finalScore - 25);
+  if (finalScore < 55) direction = 'NEUTRAL';
 
-  // If score drops below 55 after penalty, revert to NEUTRAL
-  if (finalScore < 55) {
-    direction = 'NEUTRAL';
+  const { swingHigh, swingLow } = findSwingHighLow(highs, lows, 20);
+  const fibLevels = calcFibonacci(swingHigh, swingLow);
+  const nearestFib = fibLevels.find((fib) => Math.abs(fib.value - currentPrice) / currentPrice < 0.02) || fibLevels[2];
+
+  let stopLoss = currentPrice - atr * 1.5;
+  let takeProfit1 = currentPrice + atr * 1.5;
+  let takeProfit2 = currentPrice + atr * 3.0;
+
+  if (direction === 'LONG') {
+    stopLoss = Math.min(swingLow * 0.998, currentPrice - atr * 1.5);
+    const risk = currentPrice - stopLoss;
+    takeProfit1 = currentPrice + (risk * 1.5);
+    takeProfit2 = currentPrice + (risk * 3.0);
+  } else if (direction === 'SHORT') {
+    stopLoss = Math.max(swingHigh * 1.002, currentPrice + atr * 1.5);
+    const risk = stopLoss - currentPrice;
+    takeProfit1 = currentPrice - (risk * 1.5);
+    takeProfit2 = currentPrice - (risk * 3.0);
   }
 
-  // Always return a signal if we have enough data, even if the score is low, 
-  // so the user can see the technical analysis breakdown.
-  if (finalScore >= 0) {
-    // Step 4: Smart SL/TP
-    const { swingHigh, swingLow } = findSwingHighLow(highs, lows, 20);
-    
-    // Fibonacci Levels
-    const fibLevels = calcFibonacci(swingHigh, swingLow);
-    const nearestFib = fibLevels.find(f => Math.abs(f.value - currentPrice) / currentPrice < 0.02) || fibLevels[2];
+  const risk = Math.abs(currentPrice - stopLoss);
+  const reward = Math.abs(takeProfit1 - currentPrice);
+  const riskReward = risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
 
-    let sl, tp1, tp2;
-    if (direction === 'LONG') {
-      sl = Math.min(swingLow * 0.998, currentPrice - atr * 1.5); // Just below swing low or ATR
-      const risk = currentPrice - sl;
-      tp1 = currentPrice + (risk * 1.5);
-      tp2 = currentPrice + (risk * 3.0);
-    } else if (direction === 'SHORT') {
-      sl = Math.max(swingHigh * 1.002, currentPrice + atr * 1.5); // Just above swing high or ATR
-      const risk = sl - currentPrice;
-      tp1 = currentPrice - (risk * 1.5);
-      tp2 = currentPrice - (risk * 3.0);
-    } else {
-      // Neutral fallback SL/TP
-      sl = currentPrice - atr * 1.5;
-      tp1 = currentPrice + atr * 1.5;
-      tp2 = currentPrice + atr * 3.0;
-    }
+  let elliottWave = 'Wave 4 (Consolidation)';
+  if (adx > 25) {
+    if (rsi > 60 || rsi < 40) elliottWave = 'Wave 3 (Impulse)';
+    if (rsi > 75 || rsi < 25) elliottWave = 'Wave 5 (Exhaustion)';
+  } else if (divergence !== 'NONE') {
+    elliottWave = 'Wave 5 (Exhaustion)';
+  }
 
-    const riskReward = (Math.abs(tp1 - currentPrice) / Math.abs(currentPrice - sl)).toFixed(2);
-
-    // Elliott Wave Heuristic
-    let elliottWave = 'Wave 4 (Consolidation)';
-    if (adx > 25) {
-      if (rsi > 60 || rsi < 40) elliottWave = 'Wave 3 (Impulse)';
-      if (rsi > 75 || rsi < 25) elliottWave = 'Wave 5 (Exhaustion)';
-    } else if (divergence !== 'NONE') {
-      elliottWave = 'Wave 5 (Exhaustion)';
-    }
-
-    // Update RL agent with a fresh backtest
-    backtestSignal(symbol, k15m, direction);
-    const stats = rlOptimizer.getStats(symbol);
-
-    return {
-      symbol,
-      direction,
-      type: adx > 25 ? 'Trend Continuation' : 'Trend Reversal',
-      score: Math.round(finalScore),
-      entryPrice: currentPrice,
-      takeProfit1: tp1,
-      takeProfit2: tp2,
-      stopLoss: sl,
-      riskReward: Number(riskReward),
-      winRate: stats.winRate,
-      wins: stats.wins,
-      losses: stats.losses,
-      indicators: {
-        ema20, ema50, ema200, adx, rsi, macd, obv, vwap, bb, atr,
-        fibonacci: { nearestLevel: nearestFib.level, value: nearestFib.value },
-        elliottWave,
-        trend: ema20 > ema50 ? 'BULLISH' : 'BEARISH',
-        mtfaTrend,
-        btcTrend,
-        volumeSpike,
-        liquidityLevels: {
-          resistance: [swingHigh, swingHigh * 1.02],
-          support: [swingLow, swingLow * 0.98]
-        },
-        oiChange24h: (Math.random() * 5) + (direction === 'LONG' ? 1 : -3) // Slightly more realistic
+  return {
+    direction,
+    finalScore,
+    currentPrice,
+    takeProfit1,
+    takeProfit2,
+    stopLoss,
+    riskReward,
+    indicators: {
+      ema20,
+      ema50,
+      ema200,
+      adx,
+      rsi,
+      macd,
+      obv,
+      vwap,
+      bb,
+      atr,
+      fibonacci: { nearestLevel: nearestFib.level, value: nearestFib.value },
+      elliottWave,
+      trend: ema20 > ema50 ? 'BULLISH' : 'BEARISH',
+      mtfaTrend,
+      btcTrend,
+      volumeSpike,
+      liquidityLevels: {
+        resistance: [swingHigh, swingHigh * 1.02],
+        support: [swingLow, swingLow * 0.98]
       },
-      timestamp: new Date()
-    };
-  }
-
-  return null;
+      oiChange24h: 0
+    }
+  };
 };
 
+const getKlinesUpToTime = (klines: Kline[], time: number) =>
+  klines.filter((kline) => kline.startTime <= time);
+
+const estimateHistoricalSignalStats = (
+  symbol: string,
+  k15m: Kline[],
+  k1h: Kline[],
+  k4h: Kline[],
+  btc1h: Kline[]
+) => {
+  if (k15m.length < 80 || k1h.length < 50 || k4h.length < 50 || btc1h.length < 50) {
+    return EMPTY_BACKTEST_STATS;
+  }
+
+  let wins = 0;
+  let losses = 0;
+  let unresolved = 0;
+
+  for (let index = 60; index < k15m.length - 6; index += 1) {
+    const historical15m = k15m.slice(0, index + 1);
+    const currentTime = historical15m[historical15m.length - 1].startTime;
+    const historical1h = getKlinesUpToTime(k1h, currentTime);
+    const historical4h = getKlinesUpToTime(k4h, currentTime);
+    const historicalBtc1h = getKlinesUpToTime(btc1h, currentTime);
+
+    if (historical1h.length < 50 || historical4h.length < 50 || historicalBtc1h.length < 50) {
+      continue;
+    }
+
+    const analysis = buildSignalAnalysis(symbol, historical15m, historical1h, historical4h, historicalBtc1h, null);
+    if (!analysis || analysis.direction === 'NEUTRAL') continue;
+
+    const outcome = resolveTradeOutcome(
+      {
+        direction: analysis.direction,
+        entryPrice: analysis.currentPrice,
+        stopLoss: analysis.stopLoss,
+        takeProfit: analysis.takeProfit1,
+        entryMode: 'market'
+      },
+      k15m.slice(index + 1, index + 7)
+    );
+
+    if (outcome === 'win') wins += 1;
+    else if (outcome === 'loss') losses += 1;
+    else if (outcome === 'open') unresolved += 1;
+  }
+
+  return createBacktestStats(wins, losses, unresolved);
+};
+
+export const generateSignal = (
+  symbol: string,
+  k15m: Kline[],
+  k1h: Kline[],
+  k4h: Kline[],
+  btc1h: Kline[],
+  ticker: BybitTicker | null = null
+): TradingSignal | null => {
+  const analysis = buildSignalAnalysis(symbol, k15m, k1h, k4h, btc1h, ticker);
+  if (!analysis) return null;
+
+  const stats = estimateHistoricalSignalStats(symbol, k15m, k1h, k4h, btc1h);
+
+  return {
+    symbol,
+    direction: analysis.direction,
+    type: analysis.indicators.adx > 25 ? 'Trend Continuation' : 'Trend Reversal',
+    score: Math.round(analysis.finalScore),
+    entryPrice: analysis.currentPrice,
+    takeProfit1: analysis.takeProfit1,
+    takeProfit2: analysis.takeProfit2,
+    stopLoss: analysis.stopLoss,
+    riskReward: analysis.riskReward,
+    winRate: stats.winRate,
+    wins: stats.wins,
+    losses: stats.losses,
+    sampleSize: stats.sampleSize,
+    unresolved: stats.unresolved,
+    indicators: analysis.indicators,
+    timestamp: new Date()
+  };
+};

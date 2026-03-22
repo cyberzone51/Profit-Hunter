@@ -15,6 +15,8 @@ interface SymbolWeights {
 
 class SignalOptimizer {
   private static instance: SignalOptimizer;
+  private static readonly STORAGE_VERSION = '3';
+  private static readonly GLOBAL_SYMBOL = '__global__';
   private weights: Record<string, SymbolWeights> = {};
   private performance: Record<string, Record<string, PerformanceRecord>> = {};
 
@@ -31,6 +33,15 @@ class SignalOptimizer {
 
   private loadFromStorage() {
     try {
+      const version = localStorage.getItem('rl_signal_version');
+      if (version !== SignalOptimizer.STORAGE_VERSION) {
+        this.weights = {};
+        this.performance = {};
+        localStorage.setItem('rl_signal_version', SignalOptimizer.STORAGE_VERSION);
+        this.saveToStorage();
+        return;
+      }
+
       const saved = localStorage.getItem('rl_signal_weights');
       if (saved) {
         this.weights = JSON.parse(saved);
@@ -46,6 +57,7 @@ class SignalOptimizer {
 
   private saveToStorage() {
     try {
+      localStorage.setItem('rl_signal_version', SignalOptimizer.STORAGE_VERSION);
       localStorage.setItem('rl_signal_weights', JSON.stringify(this.weights));
       localStorage.setItem('rl_signal_performance', JSON.stringify(this.performance));
     } catch (e) {
@@ -54,8 +66,18 @@ class SignalOptimizer {
   }
 
   public getWeight(symbol: string, indicator: string): number {
+    const localWeight = this.weights[symbol]?.[indicator];
+    const globalWeight = this.weights[SignalOptimizer.GLOBAL_SYMBOL]?.[indicator];
+
+    if (typeof localWeight === 'number' && typeof globalWeight === 'number') {
+      return (localWeight * 0.7) + (globalWeight * 0.3);
+    }
+
+    if (typeof localWeight === 'number') return localWeight;
+    if (typeof globalWeight === 'number') return globalWeight;
+
     if (!this.weights[symbol]) this.weights[symbol] = {};
-    return this.weights[symbol][indicator] ?? 1.0; // Default weight is 1.0
+    return this.weights[symbol][indicator] ?? 1.0;
   }
 
   /**
@@ -91,7 +113,7 @@ class SignalOptimizer {
    * Get detailed performance stats for a symbol
    */
   public getStats(symbol: string): { wins: number; losses: number; total: number; winRate: number } {
-    if (!this.performance[symbol]) return { wins: 0, losses: 0, total: 0, winRate: 0.72 };
+    if (!this.performance[symbol]) return { wins: 0, losses: 0, total: 0, winRate: 0 };
     
     let wins = 0;
     let total = 0;
@@ -109,7 +131,7 @@ class SignalOptimizer {
     }
     
     const losses = total - wins;
-    const winRate = total > 0 ? wins / total : 0.72;
+    const winRate = total > 0 ? wins / total : 0;
     
     return { wins, losses, total, winRate };
   }
@@ -119,6 +141,32 @@ class SignalOptimizer {
    */
   public getWinRate(symbol: string): number {
     return this.getStats(symbol).winRate;
+  }
+
+  public getIndicatorStats(symbol: string, indicator: string): { wins: number; losses: number; total: number; winRate: number; score: number } {
+    const localRecord = this.performance[symbol]?.[indicator];
+    const globalRecord = this.performance[SignalOptimizer.GLOBAL_SYMBOL]?.[indicator];
+
+    const wins = (localRecord?.success || 0) + (globalRecord?.success || 0);
+    const total = (localRecord?.total || 0) + (globalRecord?.total || 0);
+    const losses = total - wins;
+
+    return {
+      wins,
+      losses,
+      total,
+      winRate: total > 0 ? wins / total : 0,
+      score: wins - losses
+    };
+  }
+
+  public getScore(symbol: string, indicator = 'overall'): number {
+    if (indicator === 'overall') {
+      const stats = this.getStats(symbol);
+      return stats.wins - stats.losses;
+    }
+
+    return this.getIndicatorStats(symbol, indicator).score;
   }
 }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { BybitTicker } from '../types';
 import { API_URL } from '../config';
-import { rlOptimizer } from '../utils/rl';
+import { createBacktestStats, EMPTY_BACKTEST_STATS, resolveTradeOutcome } from '../utils/backtest';
 
 type ProSignal =
   | 'ELITE TRADE'
@@ -35,6 +35,9 @@ export interface ProAnalysisResult {
   score: number;
   aiProbability: number;
   winRate: number;
+  wins: number;
+  losses: number;
+  sampleSize: number;
   signal: ProSignal;
   metrics: {
     turnover: number;
@@ -113,6 +116,69 @@ const normalizeReferencePriceChange = (exchange: string, referenceTicker: any) =
     return toNumber(referenceTicker.price24hPcnt) * 100;
   }
   return toNumber(referenceTicker.priceChangePercent);
+};
+
+const estimateProTradeStats = (klines: AnalysisKline[], direction: Direction) => {
+  if (direction === 'NONE' || klines.length < 20) return EMPTY_BACKTEST_STATS;
+
+  let wins = 0;
+  let losses = 0;
+  let unresolved = 0;
+
+  for (let index = 6; index < klines.length - 6; index += 1) {
+    const history = klines.slice(0, index + 1);
+    const current = history[history.length - 1];
+    const previous = history[history.length - 2];
+    const breakoutWindow = history.slice(-7, -1);
+    if (!current || !previous || breakoutWindow.length === 0) continue;
+
+    const averageVolume = average(history.slice(-7, -1).map((kline) => kline.volume));
+    const volumeSpike = averageVolume > 0 && current.volume >= averageVolume * 2;
+    const priceChange = previous.close > 0 ? ((current.close - previous.close) / previous.close) * 100 : 0;
+    const priorHigh = Math.max(...breakoutWindow.map((kline) => kline.high));
+    const priorLow = Math.min(...breakoutWindow.map((kline) => kline.low));
+
+    if (direction === 'LONG') {
+      if (!volumeSpike || priceChange < 1.5 || current.high <= priorHigh) continue;
+
+      const recentHigh = Math.max(...history.slice(-3).map((kline) => kline.high));
+      const recentLow = Math.min(...history.slice(-5).map((kline) => kline.low));
+      const entryPrice = recentHigh * (1 - 0.005);
+      const stopLoss = recentLow > 0 && recentLow < entryPrice ? recentLow : entryPrice * 0.99;
+      const risk = Math.max(entryPrice - stopLoss, entryPrice * 0.01);
+      const takeProfit = entryPrice + (risk * 2);
+
+      const outcome = resolveTradeOutcome(
+        { direction: 'LONG', entryPrice, stopLoss, takeProfit, entryMode: 'limit' },
+        klines.slice(index + 1, index + 7)
+      );
+
+      if (outcome === 'win') wins += 1;
+      else if (outcome === 'loss') losses += 1;
+      else if (outcome === 'open') unresolved += 1;
+      continue;
+    }
+
+    if (!volumeSpike || priceChange > -1.5 || current.low >= priorLow) continue;
+
+    const recentLow = Math.min(...history.slice(-3).map((kline) => kline.low));
+    const recentHigh = Math.max(...history.slice(-5).map((kline) => kline.high));
+    const entryPrice = recentLow * (1 + 0.005);
+    const stopLoss = recentHigh > entryPrice ? recentHigh : entryPrice * 1.01;
+    const risk = Math.max(stopLoss - entryPrice, entryPrice * 0.01);
+    const takeProfit = entryPrice - (risk * 2);
+
+    const outcome = resolveTradeOutcome(
+      { direction: 'SHORT', entryPrice, stopLoss, takeProfit, entryMode: 'limit' },
+      klines.slice(index + 1, index + 7)
+    );
+
+    if (outcome === 'win') wins += 1;
+    else if (outcome === 'loss') losses += 1;
+    else if (outcome === 'open') unresolved += 1;
+  }
+
+  return createBacktestStats(wins, losses, unresolved);
 };
 
 export const useProAnalysis = (ticker: BybitTicker | null) => {
@@ -359,6 +425,7 @@ export const useProAnalysis = (ticker: BybitTicker | null) => {
       const momentumScore = direction === 'SHORT' ? shortMomentumScore : longMomentumScore;
       const deltaScore = direction === 'SHORT' ? shortDeltaScore : longDeltaScore;
       const fundingScore = direction === 'SHORT' ? shortFundingScore : longFundingScore;
+      const backtestStats = estimateProTradeStats(klines, direction);
 
       let aiProbability = 38 + (totalScore * 5);
       if (totalScore >= 8) aiProbability += 8;
@@ -438,7 +505,10 @@ export const useProAnalysis = (ticker: BybitTicker | null) => {
         rejectReason,
         score: totalScore,
         aiProbability,
-        winRate: rlOptimizer.getWinRate(`${currentTicker.exchange || 'Bybit'}:${currentTicker.symbol}`) || rlOptimizer.getWinRate(currentTicker.symbol),
+        winRate: backtestStats.winRate,
+        wins: backtestStats.wins,
+        losses: backtestStats.losses,
+        sampleSize: backtestStats.sampleSize,
         signal: signalType,
         metrics: {
           turnover: turnover24h,

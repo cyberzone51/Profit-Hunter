@@ -26,6 +26,13 @@ async function startServer() {
 
   app.use(express.json());
 
+  const safeNumber = (value: unknown, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const safeString = (value: unknown, fallback = '0') => String(value ?? fallback);
+
   // Cache for instruments info to get launchTime
   let instrumentsCache: Record<string, string> = {};
   let lastInstrumentsFetch = 0;
@@ -219,23 +226,31 @@ async function startServer() {
         const response = await fetch('https://api-futures.kucoin.com/api/v1/allTickers', { signal: AbortSignal.timeout(10000) });
         if (!response.ok) throw new Error(`KuCoin API error: ${response.status}`);
         const data = await response.json();
-        const list = data.data.filter((t: any) => t.symbol.endsWith('USDTM')).map((t: any) => ({
-          symbol: t.symbol.replace('USDTM', 'USDT'),
-          exchangeSymbol: t.symbol,
-          lastPrice: t.lastPrice,
-          prevPrice24h: (Number(t.lastPrice) / (1 + Number(t.changeRate))).toString(),
-          price24hPcnt: t.changeRate.toString(),
-          highPrice24h: t.highPrice || t.lastPrice,
-          lowPrice24h: t.lowPrice || t.lastPrice,
-          turnover24h: t.turnover,
-          volume24h: t.volume,
-          fundingRate: '0',
-          prevPrice1h: t.lastPrice,
-          openInterest: '0',
-          openInterestValue: '0',
-          nextFundingTime: '0',
-          exchange: 'KuCoin'
-        }));
+        const rows = Array.isArray(data.data) ? data.data : [];
+        const list = rows.filter((t: any) => String(t.symbol || '').endsWith('USDTM')).map((t: any) => {
+          const lastPrice = safeNumber(t.lastPrice || t.price);
+          return {
+            symbol: String(t.symbol).replace('USDTM', 'USDT'),
+            exchangeSymbol: String(t.symbol),
+            lastPrice: safeString(lastPrice),
+            prevPrice24h: safeString(lastPrice),
+            price24hPcnt: '0',
+            highPrice24h: safeString(t.highPrice, safeString(lastPrice)),
+            lowPrice24h: safeString(t.lowPrice, safeString(lastPrice)),
+            turnover24h: safeString(t.turnover, '0'),
+            volume24h: safeString(t.size, '0'),
+            fundingRate: '0',
+            prevPrice1h: safeString(lastPrice),
+            openInterest: '0',
+            openInterestValue: '0',
+            nextFundingTime: '0',
+            ask1Price: safeString(t.bestAskPrice, safeString(lastPrice)),
+            bid1Price: safeString(t.bestBidPrice, safeString(lastPrice)),
+            ask1Size: safeString(t.bestAskSize, '0'),
+            bid1Size: safeString(t.bestBidSize, '0'),
+            exchange: 'KuCoin'
+          };
+        });
         return res.json({ retCode: 0, result: { list } });
       }
 
@@ -243,23 +258,29 @@ async function startServer() {
         const response = await fetch('https://contract.mexc.com/api/v1/contract/ticker', { signal: AbortSignal.timeout(10000) });
         if (!response.ok) throw new Error(`MEXC API error: ${response.status}`);
         const data = await response.json();
-        const list = data.data.filter((t: any) => t.symbol.endsWith('_USDT')).map((t: any) => ({
-          symbol: t.symbol.replace('_', ''),
-          exchangeSymbol: t.symbol,
-          lastPrice: t.lastPrice.toString(),
-          prevPrice24h: (Number(t.lastPrice) / (1 + Number(t.riseFallRate))).toString(),
-          price24hPcnt: t.riseFallRate.toString(),
-          highPrice24h: t.highPrice24h.toString(),
-          lowPrice24h: t.lowPrice24h.toString(),
-          turnover24h: t.amount24.toString(),
-          volume24h: t.volume24.toString(),
-          fundingRate: '0',
-          prevPrice1h: t.lastPrice.toString(),
-          openInterest: '0',
-          openInterestValue: '0',
-          nextFundingTime: '0',
-          exchange: 'MEXC'
-        }));
+        const rows = Array.isArray(data.data) ? data.data : [];
+        const list = rows.filter((t: any) => String(t.symbol || '').endsWith('_USDT')).map((t: any) => {
+          const lastPrice = safeNumber(t.lastPrice);
+          return {
+            symbol: String(t.symbol).replace('_', ''),
+            exchangeSymbol: String(t.symbol),
+            lastPrice: safeString(lastPrice),
+            prevPrice24h: safeString(lastPrice > 0 ? lastPrice / (1 + safeNumber(t.riseFallRate)) : 0),
+            price24hPcnt: safeString(safeNumber(t.riseFallRate)),
+            highPrice24h: safeString(t.high24Price, safeString(lastPrice)),
+            lowPrice24h: safeString(t.lower24Price, safeString(lastPrice)),
+            turnover24h: safeString(t.amount24, '0'),
+            volume24h: safeString(t.volume24, '0'),
+            fundingRate: safeString(t.fundingRate, '0'),
+            prevPrice1h: safeString(lastPrice),
+            openInterest: safeString(t.holdVol, '0'),
+            openInterestValue: safeString(t.holdVol, '0'),
+            nextFundingTime: '0',
+            ask1Price: safeString(t.ask1, safeString(lastPrice)),
+            bid1Price: safeString(t.bid1, safeString(lastPrice)),
+            exchange: 'MEXC'
+          };
+        });
         return res.json({ retCode: 0, result: { list } });
       }
 
